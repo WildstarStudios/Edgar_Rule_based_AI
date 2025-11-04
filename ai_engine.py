@@ -5,7 +5,7 @@ import os
 import random
 import time
 import threading
-from typing import List, Dict, Tuple, Optional, Callable
+from typing import List, Dict, Tuple, Optional
 from fuzzywuzzy import fuzz, process
 import nltk
 from nltk.stem import PorterStemmer
@@ -59,8 +59,8 @@ class AdvancedChatbot:
             'conversation_mood': 'neutral',
             'topic_consistency_score': 1.0,
             'recent_subjects': deque(maxlen=5),
-            'last_detailed_topic': None,  # Track what we last gave details about
-            'available_follow_ups': {},   # Store available follow-up information
+            'last_detailed_topic': None,
+            'available_follow_ups': {},
         }
         
         self.performance_stats = {
@@ -73,227 +73,41 @@ class AdvancedChatbot:
             'follow_up_requests': 0,
         }
         
-        self.load_enhanced_data_with_followups()
+        self.load_data()
     
-    def load_enhanced_data_with_followups(self):
-        """Load data with comprehensive follow-up information"""
-        self.qa_pairs = [
-            # ===== GREETINGS & BASIC =====
-            {
-                "question": "hello",
-                "answers": [
-                    "Hello! How can I help you today?",
-                    "Hi there! Nice to meet you!",
-                    "Hey! I'm here to assist you!",
-                ],
-                "topic": "greeting",
-                "priority": "high",
-                "context_sensitive": False,
-                "keywords": ["hello", "hi", "hey"],
-                "follow_up_info": "I'm an advanced chatbot with context awareness, streaming responses, and intelligent matching. I can help with programming, AI, game development, and much more!"
-            },
-            {
-                "question": "hi",
-                "answers": [
-                    "Hi! What can I do for you?",
-                    "Hello there! How can I assist?",
-                    "Hey! Ready to chat!",
-                ],
-                "topic": "greeting",
-                "priority": "high",
-                "context_sensitive": False,
-                "keywords": ["hello", "hi", "hey"],
-                "follow_up_info": "I specialize in technical topics like programming languages, AI concepts, and game development engines. Feel free to ask me anything in these areas!"
-            },
-            
-            # ===== THANKS & COURTESY =====
-            {
-                "question": "thank you",
-                "answers": [
-                    "You're welcome! Happy to help!",
-                    "My pleasure! Let me know if you need anything else!",
-                    "You're welcome! Is there anything more I can assist with?",
-                ],
-                "topic": "thanks",
-                "priority": "high",
-                "context_sensitive": False,
-                "keywords": ["thank", "thanks", "appreciate"],
-                "follow_up_info": "I'm always here to help! I can provide detailed explanations, compare technologies, or help you learn new concepts. Just let me know what you're interested in!"
-            },
-            
-            # ===== PROGRAMMING & TECH =====
-            {
-                "question": "Tell me about Python",
-                "answers": [
-                    "Python is a versatile programming language great for beginners and experts!",
-                    "Python is known for its simplicity and extensive libraries!",
-                    "Python's clean syntax makes it excellent for rapid development!",
-                ],
-                "topic": "programming",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["python", "programming", "language"],
-                "follow_up_info": """Python Details:
-• Created by Guido van Rossum in 1991
-• Used for: web development (Django, Flask), data science (Pandas, NumPy), AI/ML (TensorFlow, PyTorch)
-• Key features: dynamic typing, automatic memory management, extensive standard library
-• Popular in: scientific computing, automation, web development, and education"""
-            },
-            {
-                "question": "What is Python?",
-                "answers": [
-                    "Python is a high-level programming language known for its readability and versatility!",
-                    "Python is used for web development, data science, AI, and automation!",
-                    "It's a popular language with a huge community and extensive libraries!",
-                ],
-                "topic": "programming",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["python", "programming", "language"],
-                "follow_up_info": """Python Applications:
-• Web Development: Django, Flask, FastAPI
-• Data Science: Pandas, NumPy, SciPy
-• Machine Learning: TensorFlow, PyTorch, Scikit-learn
-• Automation: Scripting, web scraping, DevOps
-• Game Development: Pygame, Arcade
-• Education: Beginner-friendly syntax and extensive learning resources"""
-            },
-            {
-                "question": "What is machine learning?",
-                "answers": [
-                    "Machine learning enables computers to learn from data without explicit programming!",
-                    "ML algorithms improve automatically through experience and data!",
-                    "Machine learning powers modern AI applications and intelligent systems!",
-                ],
-                "topic": "ai",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["machine", "learning", "ai", "algorithm"],
-                "follow_up_info": """Machine Learning Types:
-• Supervised Learning: Training with labeled data (classification, regression)
-• Unsupervised Learning: Finding patterns in unlabeled data (clustering, dimensionality reduction)
-• Reinforcement Learning: Learning through trial and error with rewards/punishments
-
-Common Algorithms:
-• Linear Regression, Decision Trees, Neural Networks
-• K-Means Clustering, Principal Component Analysis
-• Q-Learning, Deep Q-Networks
-
-Applications: Recommendation systems, image recognition, natural language processing, autonomous vehicles"""
-            },
-            {
-                "question": "What is Godot?",
-                "answers": [
-                    "Godot is a free, open-source game engine for 2D and 3D development!",
-                    "Godot Engine is known for its flexible scene system and ease of use!",
-                    "It's a popular game engine alternative with great community support!",
-                ],
-                "topic": "gaming",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["godot", "game", "engine", "development"],
-                "follow_up_info": """Godot Engine Features:
-• Scene System: Flexible node-based architecture
-• Scripting: GDScript (Python-like), C#, VisualScript
-• 2D/3D: Built-in support for both 2D and 3D game development
-• Export: Cross-platform to Windows, Mac, Linux, Android, iOS, Web
-• Community: Active open-source community with extensive asset library
-
-Advantages:
-• Completely free and open-source (MIT license)
-• No royalties or subscription fees
-• Lightweight and fast
-• Great for indie developers and prototyping"""
-            },
-            {
-                "question": "What is artificial intelligence?",
-                "answers": [
-                    "AI is the simulation of human intelligence in machines!",
-                    "Artificial intelligence enables machines to think, learn, and reason!",
-                    "AI includes machine learning, natural language processing, and computer vision!",
-                ],
-                "topic": "ai",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["artificial", "intelligence", "ai", "machine"],
-                "follow_up_info": """AI Branches:
-• Machine Learning: Algorithms that learn from data
-• Natural Language Processing: Understanding and generating human language
-• Computer Vision: Interpreting and understanding visual information
-• Robotics: Intelligent control of physical systems
-• Expert Systems: Rule-based decision making
-
-Current Applications:
-• Virtual assistants (Siri, Alexa)
-• Image and speech recognition
-• Autonomous vehicles
-• Medical diagnosis systems
-• Game AI and procedural content generation"""
-            },
-            
-            # ===== ADDITIONAL TOPICS =====
-            {
-                "question": "What is Blender?",
-                "answers": [
-                    "Blender is a free and open-source 3D creation suite!",
-                    "Blender is used for 3D modeling, animation, visual effects, and more!",
-                    "It's a powerful alternative to commercial 3D software packages!",
-                ],
-                "topic": "creative",
-                "priority": "medium",
-                "context_sensitive": True,
-                "keywords": ["blender", "3d", "modeling", "animation"],
-                "follow_up_info": """Blender Features:
-• 3D Modeling: Polygon modeling, sculpting, retopology
-• Animation: Character animation, rigging, shape keys
-• Rendering: Cycles (ray-tracing) and Eevee (real-time) renderers
-• VFX: Compositing, motion tracking, simulation
-• Game Development: Game engine (though deprecated in newer versions)
-
-Advantages:
-• Completely free and open-source
-• Active development and large community
-• All-in-one solution for 3D pipeline
-• Used in professional studios and indie projects alike"""
-            },
-            {
-                "question": "What is Wildstar Studios?",
-                "answers": [
-                    "Wildstar Studios appears to be a game development studio!",
-                    "I believe Wildstar Studios works on game development projects!",
-                    "It seems to be a studio in the gaming industry!",
-                ],
-                "topic": "gaming",
-                "priority": "low",
-                "context_sensitive": True,
-                "keywords": ["wildstar", "studios", "game", "development"],
-                "follow_up_info": """About Game Development Studios:
-• Game studios range from small indie teams to large AAA companies
-• They typically handle: game design, programming, art, sound, and marketing
-• Common roles: Game designers, programmers, artists, producers, QA testers
-• Development phases: Pre-production, production, testing, launch, post-launch support
-
-For specific information about Wildstar Studios, you might want to check their official website or recent game releases, as my information might not be current."""
-            },
-            
-            # ===== FALLBACK =====
-            {
-                "question": "how are you",
-                "answers": [
-                    "I'm functioning well, thank you! How are you?",
-                    "I'm doing great! Ready to help you!",
-                    "I'm running smoothly! What can I help with?",
-                ],
-                "topic": "greeting",
-                "priority": "low",
-                "context_sensitive": False,
-                "keywords": ["how", "are", "you"],
-                "follow_up_info": "As an AI, I don't have feelings, but I'm optimized for conversation and context awareness. I'm always learning and improving to provide better assistance!"
-            },
-        ]
-        
-        print(f"📚 Loaded {len(self.qa_pairs)} enhanced question-answer pairs with follow-up information!")
+    def load_data(self):
+        """Load QA pairs from JSON database file"""
+        try:
+            if os.path.exists(self.database_file):
+                with open(self.database_file, 'r', encoding='utf-8') as f:
+                    self.qa_pairs = json.load(f)
+                print(f"📚 Loaded {len(self.qa_pairs)} question-answer pairs from {self.database_file}")
+            else:
+                print(f"⚠️ Database file {self.database_file} not found. Starting with empty database.")
+                self.qa_pairs = []
+        except Exception as e:
+            print(f"❌ Error loading database: {e}")
+            self.qa_pairs = []
     
+    def save_data(self):
+        """Save QA pairs to JSON database file"""
+        try:
+            with open(self.database_file, 'w', encoding='utf-8') as f:
+                json.dump(self.qa_pairs, f, indent=2, ensure_ascii=False)
+            print(f"💾 Saved {len(self.qa_pairs)} QA pairs to {self.database_file}")
+        except Exception as e:
+            print(f"❌ Error saving database: {e}")
+    
+    def add_qa_pair(self, qa_pair: dict):
+        """Add a new QA pair to the database"""
+        self.qa_pairs.append(qa_pair)
+        self.save_data()
+    
+    def remove_qa_pair(self, question: str):
+        """Remove a QA pair by question"""
+        self.qa_pairs = [pair for pair in self.qa_pairs if pair['question'].lower() != question.lower()]
+        self.save_data()
+
     # ===== ENHANCED "TELL ME MORE" FUNCTIONALITY =====
     
     def handle_tell_me_more(self, user_input: str) -> Optional[str]:
@@ -538,13 +352,13 @@ For specific information about Wildstar Studios, you might want to check their o
                 self.conversation_context['topic_consistency_score'] * 0.7 + consistency * 0.3
             )
     
-    # ===== IMPROVED MATCHING SYSTEM =====
+    # ===== IMPROVED MATCHING SYSTEM WITH MULTIPLE QUESTIONS SUPPORT =====
     
     def find_best_match(self, user_question: str) -> Optional[Tuple[dict, float, str]]:
-        """Find best match with improved logic"""
+        """Find best match with improved logic - supports multiple questions per answer set"""
         user_question_lower = user_question.lower().strip()
         
-        # First check for exact matches
+        # First check for exact matches in all question variations
         exact_match = self.find_exact_match(user_question_lower)
         if exact_match:
             return exact_match, 1.0, "exact"
@@ -567,6 +381,7 @@ For specific information about Wildstar Studios, you might want to check their o
         best_match_type = "semantic"
         
         for qa_pair in self.qa_pairs:
+            # Calculate similarity with all question variations
             base_score = self.calculate_semantic_similarity(user_question, qa_pair)
             
             if base_score > best_score and base_score >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
@@ -592,41 +407,67 @@ For specific information about Wildstar Studios, you might want to check their o
         return None
     
     def calculate_semantic_similarity(self, user_question: str, qa_pair: dict) -> float:
-        """Calculate semantic similarity"""
+        """Calculate semantic similarity with multiple question support"""
         user_lower = user_question.lower()
-        db_lower = qa_pair['question'].lower()
+        
+        # Get all question variations for this QA pair
+        questions = qa_pair.get('questions', [qa_pair['question']])
         db_keywords = qa_pair.get('keywords', [])
         
-        # Multiple similarity measures
-        full_similarity = fuzz.token_set_ratio(user_lower, db_lower) / 100.0
+        best_similarity = 0.0
         
-        # Keyword matching
-        keyword_score = 0.0
-        if db_keywords:
-            matches = sum(1 for keyword in db_keywords if keyword in user_lower)
-            keyword_score = matches / len(db_keywords)
+        for question in questions:
+            db_lower = question.lower()
+            
+            # Multiple similarity measures for each question variation
+            full_similarity = fuzz.token_set_ratio(user_lower, db_lower) / 100.0
+            
+            # Keyword matching
+            keyword_score = 0.0
+            if db_keywords:
+                matches = sum(1 for keyword in db_keywords if keyword in user_lower)
+                keyword_score = matches / len(db_keywords)
+            
+            # Combined score for this question variation
+            combined_score = (full_similarity * 0.6 + keyword_score * 0.4)
+            
+            # Keep the best score across all question variations
+            if combined_score > best_similarity:
+                best_similarity = combined_score
         
-        # Combined score
-        combined_score = (full_similarity * 0.6 + keyword_score * 0.4)
-        
-        return min(combined_score, 1.0)
+        return min(best_similarity, 1.0)
     
     def find_exact_match(self, user_question: str) -> Optional[dict]:
-        """Find exact matches"""
+        """Find exact matches in all question variations"""
         for qa_pair in self.qa_pairs:
-            if qa_pair['question'].lower() == user_question:
-                return qa_pair
+            # Check all question variations for exact match
+            questions = qa_pair.get('questions', [qa_pair['question']])
+            for question in questions:
+                if question.lower() == user_question:
+                    return qa_pair
         return None
     
     def auto_correct_input(self, user_input: str) -> Tuple[str, List[Tuple[str, int]]]:
-        """Auto-correct input"""
+        """Auto-correct input with multiple question support"""
         user_lower = user_input.lower().strip()
         
-        if len(user_lower) <= 3 or any(qa['question'].lower() == user_lower for qa in self.qa_pairs):
+        if len(user_lower) <= 3:
             return user_input, []
         
-        existing_questions = [pair['question'] for pair in self.qa_pairs]
-        matches = process.extract(user_input, existing_questions, 
+        # Check if input matches any question variation exactly
+        for qa_pair in self.qa_pairs:
+            questions = qa_pair.get('questions', [qa_pair['question']])
+            for question in questions:
+                if question.lower() == user_lower:
+                    return user_input, []
+        
+        # Get all question variations for matching
+        all_questions = []
+        for pair in self.qa_pairs:
+            questions = pair.get('questions', [pair['question']])
+            all_questions.extend(questions)
+        
+        matches = process.extract(user_input, all_questions, 
                                 scorer=fuzz.partial_ratio, limit=5)
         
         good_matches = []
@@ -742,6 +583,7 @@ For specific information about Wildstar Studios, you might want to check their o
         return random.choice(base_responses)
     
     def get_random_answer(self, answers: List[str]) -> str:
+        """Get a random answer from the available answers"""
         return random.choice(answers) if answers else "I don't have an answer for that."
     
     # ===== SIMPLIFIED UTILITY METHODS =====
@@ -777,132 +619,3 @@ For specific information about Wildstar Studios, you might want to check their o
         print(f"   Success rate: {success_rate:.1%}")
         print(f"   Follow-up requests: {self.performance_stats['follow_up_requests']}")
         print(f"   Failed matches: {self.performance_stats['failed_matches']}")
-    
-    # ===== CHAT INTERFACE =====
-    
-    def chat(self):
-        print("🤖 Enhanced Chatbot with Follow-up Support")
-        print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
-        print("Type 'reset' to clear conversation context")
-        print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
-        print("-" * 60)
-        
-        while True:
-            try:
-                user_input = input("\nYou: ").strip()
-                
-                if not user_input:
-                    continue
-                
-                if user_input.lower() in ['quit', 'exit', 'bye']:
-                    print("🤖 Goodbye! Thanks for chatting!")
-                    break
-                
-                elif user_input.lower() == 'context':
-                    print(f"🧠 Current Context: {self.get_context_summary()}")
-                    continue
-                
-                elif user_input.lower() == 'stats':
-                    self.show_statistics()
-                    continue
-                
-                elif user_input.lower() == 'reset':
-                    self.conversation_context = {
-                        'current_topic': None,
-                        'previous_topics': deque(maxlen=5),
-                        'mentioned_entities': deque(maxlen=15),
-                        'user_preferences': {},
-                        'conversation_history': deque(maxlen=8),
-                        'current_goal': None,
-                        'last_successful_match': None,
-                        'conversation_mood': 'neutral',
-                        'topic_consistency_score': 1.0,
-                        'recent_subjects': deque(maxlen=5),
-                        'last_detailed_topic': None,
-                        'available_follow_ups': {},
-                    }
-                    print("🔄 Conversation context reset!")
-                    continue
-                
-                responses = self.process_multiple_questions(user_input)
-                self.display_responses(responses)
-                
-            except KeyboardInterrupt:
-                print("\n🤖 Chatbot session ended.")
-                break
-            except Exception as e:
-                print(f"🤖 Error: {e}")
-    
-    def display_responses(self, responses: List[Tuple]):
-        """Simplified response display without streaming"""
-        for i, (original_question, answer, confidence, corrections, matched_question, match_type) in enumerate(responses, 1):
-            print(f"\n--- Question {i} ---")
-            print(f"📝 You asked: '{original_question}'")
-            
-            if corrections:
-                best_correction, best_score = corrections[0]
-                print(f"🔧 Auto-corrected to: '{best_correction}' (confidence: {best_score}%)")
-            
-            if answer:
-                print(f"🤖 {answer}")
-                
-                if matched_question and confidence > 0 and match_type != "follow_up":
-                    match_type_display = {
-                        "exact": "🎯 Exact match",
-                        "high_confidence": "✅ High confidence", 
-                        "medium_confidence": "⚠️  Medium confidence",
-                        "low_confidence": "🔍 Low confidence",
-                        "semantic": "🧠 Semantic match",
-                        "follow_up": "📚 Follow-up information",
-                        "unknown": "❓ Unknown question"
-                    }
-                    display_type = match_type_display.get(match_type, match_type)
-                    print(f"💡 {display_type}: '{matched_question}' (confidence: {confidence:.2f})")
-                
-                context_summary = self.get_context_summary()
-                if context_summary:
-                    print(f"🧠 {context_summary}")
-            else:
-                print("🤖 I don't know how to answer that yet.")
-
-# Test the enhanced follow-up system
-def test_follow_up_system():
-    print("🧪 Testing Enhanced Follow-up System")
-    print("=" * 60)
-    
-    chatbot = AdvancedChatbot()
-    
-    # Test scenarios for follow-up functionality
-    test_cases = [
-        "what is python",
-        "tell me more",  # Should use context from previous question
-        "tell me more about machine learning",  # Specific subject
-        "what is godot",
-        "tell me more about blender",  # Different specific subject
-        "tell me more about Wildstar Studios",  # Another specific subject
-    ]
-    
-    for test in test_cases:
-        print(f"\nYou: {test}")
-        responses = chatbot.process_multiple_questions(test)
-        for response in responses:
-            if response[1]:
-                print(f"Bot: {response[1]}")
-                if response[5] == "follow_up":
-                    print("💡 📚 Follow-up information provided")
-                else:
-                    print(f"Match: {response[5]} (confidence: {response[2]:.2f})")
-        print(f"Context: {chatbot.get_context_summary()}")
-        time.sleep(0.5)
-    
-    print(f"\n✅ Test completed!")
-    chatbot.show_statistics()
-
-if __name__ == "__main__":
-    test_follow_up_system()
-    print("\n" + "=" * 60)
-    print("Starting enhanced chatbot session with follow-up support...")
-    print("=" * 60)
-    
-    chatbot = AdvancedChatbot()
-    chatbot.chat()

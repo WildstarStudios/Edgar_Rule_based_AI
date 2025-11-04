@@ -5,15 +5,15 @@ import time
 import sys
 import os
 
-# Add the directory containing edgar_1.0.py to Python path
+# Add the directory containing ai_engine.py to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 try:
-    from edgar_1_0 import AdvancedChatbot
-    print("✅ Successfully imported AdvancedChatbot from edgar_1.0.py")
+    from ai_engine import AdvancedChatbot
+    print("✅ Successfully imported AdvancedChatbot from ai_engine.py")
 except ImportError as e:
     print(f"❌ Error importing AdvancedChatbot: {e}")
-    print("Please make sure edgar_1.0.py is in the same directory")
+    print("Please make sure ai_engine.py is in the same directory")
     sys.exit(1)
 
 class MiniChatWindow:
@@ -97,8 +97,7 @@ class MiniChatWindow:
         )
         self.mini_chat_display.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Configure tags for mini window - ADDED ALL TAGS FOR EXTRA INFO
-        # User messages (right-aligned)
+        # Configure tags for mini window
         self.mini_chat_display.tag_config('user_timestamp', 
                                         foreground=self.colors['text_tertiary'],
                                         justify='right',
@@ -112,7 +111,6 @@ class MiniChatWindow:
                                         justify='right',
                                         font=('Arial', 9))
         
-        # Bot messages (LEFT-ALIGNED)
         self.mini_chat_display.tag_config('bot_timestamp', 
                                         foreground=self.colors['text_tertiary'],
                                         justify='left',
@@ -126,7 +124,6 @@ class MiniChatWindow:
                                         justify='left',
                                         font=('Arial', 9))
         
-        # Extra info tags for mini window
         self.mini_chat_display.tag_config('system', 
                                         foreground=self.colors['text_secondary'],
                                         justify='center',
@@ -160,7 +157,7 @@ class MiniChatWindow:
                                         justify='left',
                                         font=('Arial', 7))
         
-        # Quick actions for mini window - MOVED TO BE ABOVE INPUT BUT BELOW CHAT
+        # Quick actions for mini window
         quick_frame = tk.Frame(self.mini_window, bg=self.colors['bg_primary'])
         quick_frame.pack(fill=tk.X, padx=10, pady=(0, 10))
         
