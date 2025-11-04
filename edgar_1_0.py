@@ -25,7 +25,7 @@ except LookupError:
     nltk.download('stopwords')
 
 class AdvancedChatbot:
-    def __init__(self, database_file: str = "chatbot_database.json", token_speed_limit: int = 0):
+    def __init__(self, database_file: str = "chatbot_database.json"):
         self.database_file = database_file
         self.qa_pairs = []
         self.stemmer = PorterStemmer()
@@ -62,11 +62,6 @@ class AdvancedChatbot:
             'last_detailed_topic': None,  # Track what we last gave details about
             'available_follow_ups': {},   # Store available follow-up information
         }
-        
-        # Token Streaming
-        self.token_speed_limit = token_speed_limit
-        self.is_streaming = False
-        self.current_stream_thread = None
         
         self.performance_stats = {
             'total_questions': 0,
@@ -749,40 +744,7 @@ For specific information about Wildstar Studios, you might want to check their o
     def get_random_answer(self, answers: List[str]) -> str:
         return random.choice(answers) if answers else "I don't have an answer for that."
     
-    # ===== STREAMING & UTILITY METHODS =====
-    
-    def stream_tokens(self, text: str, callback: Callable[[str], None]):
-        """Stream tokens"""
-        self.is_streaming = True
-        
-        def stream():
-            tokens = []
-            words = text.split()
-            for i, word in enumerate(words):
-                tokens.append(word)
-                if i < len(words) - 1:
-                    tokens.append(" ")
-            
-            for token in tokens:
-                if not self.is_streaming:
-                    break
-                callback(token)
-                delay = 1 / self.token_speed_limit if self.token_speed_limit > 0 else 0.02
-                time.sleep(delay)
-            
-            self.is_streaming = False
-        
-        self.current_stream_thread = threading.Thread(target=stream)
-        self.current_stream_thread.daemon = True
-        self.current_stream_thread.start()
-    
-    def stop_streaming(self):
-        self.is_streaming = False
-        if self.current_stream_thread and self.current_stream_thread.is_alive():
-            self.current_stream_thread.join(timeout=1.0)
-    
-    def set_token_speed_limit(self, speed: int):
-        self.token_speed_limit = max(0, speed)
+    # ===== SIMPLIFIED UTILITY METHODS =====
     
     def get_context_summary(self) -> str:
         """Get context summary"""
@@ -821,7 +783,6 @@ For specific information about Wildstar Studios, you might want to check their o
     def chat(self):
         print("🤖 Enhanced Chatbot with Follow-up Support")
         print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
-        print("Type 'speed X' to set token speed (0 = max speed)")
         print("Type 'reset' to clear conversation context")
         print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
         print("-" * 60)
@@ -836,15 +797,6 @@ For specific information about Wildstar Studios, you might want to check their o
                 if user_input.lower() in ['quit', 'exit', 'bye']:
                     print("🤖 Goodbye! Thanks for chatting!")
                     break
-                
-                elif user_input.lower().startswith('speed '):
-                    try:
-                        speed = int(user_input.split()[1])
-                        self.set_token_speed_limit(speed)
-                        print(f"🔧 Token speed limit set to {speed} tokens/second")
-                    except (IndexError, ValueError):
-                        print("❌ Usage: 'speed X' where X is tokens per second (0 = disabled)")
-                    continue
                 
                 elif user_input.lower() == 'context':
                     print(f"🧠 Current Context: {self.get_context_summary()}")
@@ -873,7 +825,7 @@ For specific information about Wildstar Studios, you might want to check their o
                     continue
                 
                 responses = self.process_multiple_questions(user_input)
-                self.display_responses_with_streaming(responses)
+                self.display_responses(responses)
                 
             except KeyboardInterrupt:
                 print("\n🤖 Chatbot session ended.")
@@ -881,7 +833,8 @@ For specific information about Wildstar Studios, you might want to check their o
             except Exception as e:
                 print(f"🤖 Error: {e}")
     
-    def display_responses_with_streaming(self, responses: List[Tuple]):
+    def display_responses(self, responses: List[Tuple]):
+        """Simplified response display without streaming"""
         for i, (original_question, answer, confidence, corrections, matched_question, match_type) in enumerate(responses, 1):
             print(f"\n--- Question {i} ---")
             print(f"📝 You asked: '{original_question}'")
@@ -891,14 +844,9 @@ For specific information about Wildstar Studios, you might want to check their o
                 print(f"🔧 Auto-corrected to: '{best_correction}' (confidence: {best_score}%)")
             
             if answer:
-                print(f"🤖 ", end='', flush=True)
-                self.stream_tokens(answer, lambda token: print(token, end='', flush=True))
+                print(f"🤖 {answer}")
                 
-                while self.is_streaming:
-                    time.sleep(0.1)
-                print()
-                
-                if matched_question and confidence > 0:
+                if matched_question and confidence > 0 and match_type != "follow_up":
                     match_type_display = {
                         "exact": "🎯 Exact match",
                         "high_confidence": "✅ High confidence", 
@@ -909,8 +857,7 @@ For specific information about Wildstar Studios, you might want to check their o
                         "unknown": "❓ Unknown question"
                     }
                     display_type = match_type_display.get(match_type, match_type)
-                    if match_type != "follow_up":  # Don't show match for follow-ups
-                        print(f"💡 {display_type}: '{matched_question}' (confidence: {confidence:.2f})")
+                    print(f"💡 {display_type}: '{matched_question}' (confidence: {confidence:.2f})")
                 
                 context_summary = self.get_context_summary()
                 if context_summary:
@@ -923,7 +870,7 @@ def test_follow_up_system():
     print("🧪 Testing Enhanced Follow-up System")
     print("=" * 60)
     
-    chatbot = AdvancedChatbot(token_speed_limit=0)
+    chatbot = AdvancedChatbot()
     
     # Test scenarios for follow-up functionality
     test_cases = [
@@ -957,5 +904,5 @@ if __name__ == "__main__":
     print("Starting enhanced chatbot session with follow-up support...")
     print("=" * 60)
     
-    chatbot = AdvancedChatbot(token_speed_limit=0)
+    chatbot = AdvancedChatbot()
     chatbot.chat()
