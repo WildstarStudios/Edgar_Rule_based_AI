@@ -52,12 +52,15 @@ except ImportError:
 
 class AdvancedChatbot:
     def __init__(self, model_name: str = None, enable_model_selection: bool = True, 
-                 streaming_speed: int = 0, additional_info_speed: int = 0):
+                 streaming_speed: int = 0, additional_info_speed: int = 0,
+                 run_tests_at_startup: bool = False, letter_streaming: bool = False):
         self.models_folder = "models"
         self.current_model = model_name
         self.enable_model_selection = enable_model_selection
         self.streaming_speed = streaming_speed  # Words per minute (0 = off) - for main responses only
         self.additional_info_speed = additional_info_speed  # Words per minute (0 = off) - for match info and context
+        self.run_tests_at_startup = run_tests_at_startup
+        self.letter_streaming = letter_streaming  # NEW: Letter-by-letter streaming mode
         self.qa_groups = []
         self.stemmer = stemmer
         self.stop_words = nltk_stopwords
@@ -126,6 +129,17 @@ class AdvancedChatbot:
         
         if self.current_model:
             self.load_model_data()
+            
+            # NEW: Run tests at startup if configured
+            if self.run_tests_at_startup:
+                print("\n" + "="*60)
+                print("🧪 STARTUP TESTING MODE ACTIVATED")
+                print("="*60)
+                self.run_systematic_test()
+                print("\n" + "="*60)
+                print("🧪 STARTUP TESTING COMPLETE - Starting chat session...")
+                print("="*60)
+            
             # Auto-start chat session after model selection
             self.chat()
         else:
@@ -204,10 +218,10 @@ class AdvancedChatbot:
             'answers_tested': 0
         })
     
-    # ===== STREAMING FUNCTIONALITY =====
+    # ===== ENHANCED STREAMING FUNCTIONALITY =====
     
     def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None):
-        """Stream text word by word with adjustable speed"""
+        """Stream text word by word or letter by letter with adjustable speed"""
         if wpm is None:
             wpm = self.streaming_speed
             
@@ -216,6 +230,15 @@ class AdvancedChatbot:
             print(f"{prefix}{text}")
             return
         
+        if self.letter_streaming:
+            # NEW: Letter-by-letter streaming mode
+            self._stream_letters(text, prefix, wpm)
+        else:
+            # Word-by-word streaming mode
+            self._stream_words(text, prefix, wpm)
+    
+    def _stream_words(self, text: str, prefix: str, wpm: int):
+        """Stream text word by word"""
         # Calculate delay between words based on words per minute
         words_per_second = wpm / 60.0
         delay_per_word = 1.0 / words_per_second if words_per_second > 0 else 0
@@ -242,17 +265,52 @@ class AdvancedChatbot:
         
         print()  # New line at the end
     
+    def _stream_letters(self, text: str, prefix: str, wpm: int):
+        """NEW: Stream text letter by letter"""
+        # Convert words per minute to letters per minute
+        # Average English word length is ~4.7 letters, so we'll use 5 for calculation
+        lpm = wpm * 5
+        letters_per_second = lpm / 60.0
+        delay_per_letter = 1.0 / letters_per_second if letters_per_second > 0 else 0
+        
+        sys.stdout.write(prefix)
+        sys.stdout.flush()
+        
+        for char in text:
+            sys.stdout.write(char)
+            sys.stdout.flush()
+            
+            # Slightly longer pauses for punctuation and spaces
+            if char in '.!?':
+                time.sleep(delay_per_letter * 3)
+            elif char in ',;:':
+                time.sleep(delay_per_letter * 2)
+            elif char == ' ':
+                time.sleep(delay_per_letter * 1.5)
+            else:
+                time.sleep(delay_per_letter)
+        
+        print()  # New line at the end
+    
     def set_streaming_speed(self, wpm: int):
         """Set main response streaming speed in words per minute (0 = off)"""
         self.streaming_speed = max(0, wpm)
-        status = "disabled" if wpm == 0 else f"set to {wpm} WPM"
+        mode = "letters" if self.letter_streaming else "words"
+        status = "disabled" if wpm == 0 else f"set to {wpm} WPM ({mode})"
         print(f"📝 Main response streaming {status}")
     
     def set_additional_info_speed(self, wpm: int):
         """Set additional info streaming speed in words per minute (0 = off)"""
         self.additional_info_speed = max(0, wpm)
-        status = "disabled" if wpm == 0 else f"set to {wpm} WPM"
+        mode = "letters" if self.letter_streaming else "words"
+        status = "disabled" if wpm == 0 else f"set to {wpm} WPM ({mode})"
         print(f"📝 Additional info streaming {status}")
+    
+    def toggle_letter_streaming(self):
+        """NEW: Toggle between word and letter streaming modes"""
+        self.letter_streaming = not self.letter_streaming
+        mode = "LETTER-BY-LETTER" if self.letter_streaming else "WORD-BY-WORD"
+        print(f"📝 Streaming mode changed to: {mode}")
     
     # ===== ENHANCED "TELL ME MORE" FUNCTIONALITY =====
     
@@ -736,7 +794,7 @@ class AdvancedChatbot:
     def get_random_answer(self, answers: List[str]) -> str:
         return random.choice(answers) if answers else "I don't have an answer for that."
     
-    # ===== TESTING SYSTEM =====
+    # ===== ENHANCED TESTING SYSTEM =====
     
     def get_current_testing_group(self) -> Optional[Dict]:
         """Get the current group being tested"""
@@ -872,6 +930,10 @@ class AdvancedChatbot:
         
         self.initialize_testing_state()
         test_results = []
+        total_combinations = sum(len(group.get('questions', [])) * len(group.get('answers', [])) for group in self.qa_groups)
+        current_combination = 0
+        
+        print(f"📊 Total question-answer combinations to test: {total_combinations}")
         
         while not self.is_testing_complete():
             progress = self.get_testing_progress()
@@ -885,6 +947,10 @@ class AdvancedChatbot:
             
             group_results = self.test_current_group()
             test_results.extend(group_results)
+            
+            # Update combination count
+            current_combination += len(group_results)
+            print(f"✅ Group completed: {len(group_results)} combinations tested")
             
             self.move_to_next_group()
         
@@ -921,8 +987,11 @@ class AdvancedChatbot:
                 self.mark_answer_used(answer_id)
                 answer_variants_tested += 1
                 
-                # Display progress
-                print(f"  ✅ Tested: '{question}' → '{answer[:50]}{'...' if len(answer) > 50 else ''}'")
+                # NEW: Enhanced progress display showing the actual testing
+                print(f"  🔍 Testing: '{question}'")
+                print(f"  💬 Answer: '{answer[:80]}{'...' if len(answer) > 80 else ''}'")
+                print(f"  ✅ Match confidence: {result['confidence']:.2f} - {'✓' if result['is_correct_match'] else '✗'}")
+                print(f"  {'-'*40}")
             
             # Mark question as used
             self.mark_question_used(question_id)
@@ -1017,14 +1086,16 @@ class AdvancedChatbot:
         
         success_rate = self.performance_stats['successful_matches'] / total
         
+        streaming_mode = "letters" if self.letter_streaming else "words"
+        
         print(f"\n📊 Performance Statistics:")
         print(f"   Total questions: {total}")
         print(f"   Success rate: {success_rate:.1%}")
         print(f"   Follow-up requests: {self.performance_stats['follow_up_requests']}")
         print(f"   Failed matches: {self.performance_stats['failed_matches']}")
         print(f"   Groups in model: {len(self.qa_groups)}")
-        print(f"   Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'})")
-        print(f"   Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'})")
+        print(f"   Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'}) - {streaming_mode} mode")
+        print(f"   Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'}) - {streaming_mode} mode")
     
     # ===== CHAT INTERFACE =====
     
@@ -1033,13 +1104,16 @@ class AdvancedChatbot:
             print("❌ No model loaded. Cannot start chat.")
             return
         
+        streaming_mode = "LETTER-BY-LETTER" if self.letter_streaming else "WORD-BY-WORD"
+        
         print(f"\n🤖 {self.current_model} - Enhanced Chatbot with Follow-up Support")
         print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
         print("Type 'reset' to clear conversation context, 'test' to run systematic test")
         print("Type 'streaming <wpm>' to set main response streaming speed (0 = off)")
         print("Type 'additional_speed <wpm>' to set additional info streaming speed (0 = off)")
-        print(f"✨ Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'})")
-        print(f"✨ Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'})")
+        print("Type 'letter_mode' to toggle between word and letter streaming")  # NEW
+        print(f"✨ Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'}) - {streaming_mode}")
+        print(f"✨ Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'}) - {streaming_mode}")
         print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
         print("-" * 60)
         
@@ -1064,6 +1138,10 @@ class AdvancedChatbot:
                 
                 elif user_input.lower() == 'test':
                     self.run_systematic_test()
+                    continue
+                
+                elif user_input.lower() == 'letter_mode':  # NEW
+                    self.toggle_letter_streaming()
                     continue
                 
                 elif user_input.lower().startswith('streaming'):
@@ -1167,16 +1245,20 @@ def main():
         print("❌ 'models' folder not found. Please run the training GUI first to create models.")
         return
     
-    # Configuration options
-    ENABLE_MODEL_SELECTION = False    # Set to False to auto-select first model
-    STREAMING_SPEED = 5000              # Words per minute for main responses (0 = off, try 150-300 for natural speed)
-    ADDITIONAL_INFO_SPEED = 0        # Words per minute for additional info (0 = off)
+    # NEW: Enhanced configuration options
+    ENABLE_MODEL_SELECTION = False      # Set to False to auto-select first model
+    STREAMING_SPEED = 500              # Words per minute for main responses (0 = off, try 150-300 for natural speed)
+    ADDITIONAL_INFO_SPEED = 0           # Words per minute for additional info (0 = off)
+    RUN_TESTS_AT_STARTUP = True         # NEW: Set to True to run tests automatically at startup
+    LETTER_STREAMING = True            # NEW: Set to True for letter-by-letter streaming
     
     # Initialize chatbot with configuration
     chatbot = AdvancedChatbot(
         enable_model_selection=ENABLE_MODEL_SELECTION,
         streaming_speed=STREAMING_SPEED,
-        additional_info_speed=ADDITIONAL_INFO_SPEED
+        additional_info_speed=ADDITIONAL_INFO_SPEED,
+        run_tests_at_startup=RUN_TESTS_AT_STARTUP,      # NEW
+        letter_streaming=LETTER_STREAMING               # NEW
     )
 
 if __name__ == "__main__":
