@@ -1,0 +1,14 @@
+[
+  {
+    "questions": [
+      "hi"
+    ],
+    "answers": [
+      "hey"
+    ],
+    "topic": "greeting",
+    "priority": "medium",
+    "context_sensitive": true,
+    "follow_ups": []
+  }
+]
