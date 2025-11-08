@@ -6,6 +6,7 @@ import random
 import time
 import threading
 import sys
+import configparser
 from typing import List, Dict, Tuple, Optional, Callable
 from fuzzywuzzy import fuzz, process
 from collections import deque
@@ -51,16 +52,33 @@ except ImportError:
     nltk_stopwords = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
 
 class AdvancedChatbot:
-    def __init__(self, model_name: str = None, enable_model_selection: bool = True, 
-                 streaming_speed: int = 0, additional_info_speed: int = 0,
-                 run_tests_at_startup: bool = False, letter_streaming: bool = False):
+    def __init__(self, model_name: str = None, config_file: str = "config.cfg", **kwargs):
         self.models_folder = "models"
         self.current_model = model_name
-        self.enable_model_selection = enable_model_selection
-        self.streaming_speed = streaming_speed  # Words per minute (0 = off) - for main responses only
-        self.additional_info_speed = additional_info_speed  # Words per minute (0 = off) - for match info and context
-        self.run_tests_at_startup = run_tests_at_startup
-        self.letter_streaming = letter_streaming  # NEW: Letter-by-letter streaming mode
+        self.config_file = config_file
+        
+        # Load configuration
+        self.config = self.load_configuration()
+        
+        # Apply configuration with kwargs override
+        self.enable_model_selection = kwargs.get('enable_model_selection', 
+                                               self.config.getboolean('ai_engine', 'enable_model_selection', fallback=True))
+        self.streaming_speed = kwargs.get('streaming_speed', 
+                                        self.config.getint('ai_engine', 'streaming_speed', fallback=0))
+        self.additional_info_speed = kwargs.get('additional_info_speed', 
+                                              self.config.getint('ai_engine', 'additional_info_speed', fallback=0))
+        self.run_tests_at_startup = kwargs.get('run_tests_at_startup', 
+                                             self.config.getboolean('ai_engine', 'run_tests_at_startup', fallback=False))
+        self.letter_streaming = kwargs.get('letter_streaming', 
+                                         self.config.getboolean('ai_engine', 'letter_streaming', fallback=False))
+        self.auto_start_chat = kwargs.get('auto_start_chat', 
+                                        self.config.getboolean('ai_engine', 'auto_start_chat', fallback=True))
+        
+        # NEW: Streaming callback for GUI integration
+        self.streaming_callback = kwargs.get('streaming_callback', None)
+        self.thinking_callback = kwargs.get('thinking_callback', None)
+        self.response_complete_callback = kwargs.get('response_complete_callback', None)
+        
         self.qa_groups = []
         self.stemmer = stemmer
         self.stop_words = nltk_stopwords
@@ -130,8 +148,7 @@ class AdvancedChatbot:
         if self.current_model:
             self.load_model_data()
             
-            # NEW: Run tests at startup if configured
-            if self.run_tests_at_startup:
+            if self.run_tests_at_startup and self.auto_start_chat:
                 print("\n" + "="*60)
                 print("🧪 STARTUP TESTING MODE ACTIVATED")
                 print("="*60)
@@ -140,10 +157,65 @@ class AdvancedChatbot:
                 print("🧪 STARTUP TESTING COMPLETE - Starting chat session...")
                 print("="*60)
             
-            # Auto-start chat session after model selection
-            self.chat()
+            if self.auto_start_chat:
+                self.chat()
         else:
             print("❌ No models available. Please create a model first using the training GUI.")
+    
+    def load_configuration(self) -> configparser.ConfigParser:
+        """Load configuration from file"""
+        config = configparser.ConfigParser()
+        
+        # Default configuration
+        defaults = {
+            'ai_engine': {
+                'enable_model_selection': 'False',
+                'streaming_speed': '300',
+                'additional_info_speed': '150',
+                'run_tests_at_startup': 'False',
+                'letter_streaming': 'True',
+                'auto_start_chat': 'False'
+            },
+            'gui': {
+                'theme': 'dark',
+                'window_width': '1000',
+                'window_height': '700',
+                'streaming_enabled': 'True'
+            }
+        }
+        
+        # Set defaults
+        for section, options in defaults.items():
+            if not config.has_section(section):
+                config.add_section(section)
+            for key, value in options.items():
+                config.set(section, key, value)
+        
+        # Load from file if exists
+        if os.path.exists(self.config_file):
+            config.read(self.config_file)
+            print(f"✅ Loaded configuration from {self.config_file}")
+        else:
+            # Create default config file
+            with open(self.config_file, 'w') as f:
+                config.write(f)
+            print(f"✅ Created default configuration file: {self.config_file}")
+        
+        return config
+    
+    def save_configuration(self):
+        """Save current configuration to file"""
+        # Update config with current values
+        self.config.set('ai_engine', 'enable_model_selection', str(self.enable_model_selection))
+        self.config.set('ai_engine', 'streaming_speed', str(self.streaming_speed))
+        self.config.set('ai_engine', 'additional_info_speed', str(self.additional_info_speed))
+        self.config.set('ai_engine', 'run_tests_at_startup', str(self.run_tests_at_startup))
+        self.config.set('ai_engine', 'letter_streaming', str(self.letter_streaming))
+        self.config.set('ai_engine', 'auto_start_chat', str(self.auto_start_chat))
+        
+        with open(self.config_file, 'w') as f:
+            self.config.write(f)
+        print(f"✅ Configuration saved to {self.config_file}")
     
     def get_available_models(self) -> List[str]:
         """Get list of available models"""
@@ -220,40 +292,46 @@ class AdvancedChatbot:
     
     # ===== ENHANCED STREAMING FUNCTIONALITY =====
     
-    def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None):
+    def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None, callback: Callable = None):
         """Stream text word by word or letter by letter with adjustable speed"""
         if wpm is None:
             wpm = self.streaming_speed
             
         if wpm == 0:
-            # Streaming disabled - print immediately
-            print(f"{prefix}{text}")
-            return
+            # Streaming disabled - return full text immediately
+            full_text = f"{prefix}{text}"
+            if callback:
+                callback(full_text)
+            else:
+                print(full_text)
+            return full_text
+        
+        # Use callback if provided, otherwise use print
+        output_method = callback if callback else lambda x: print(x, end='', flush=True)
         
         if self.letter_streaming:
-            # NEW: Letter-by-letter streaming mode
-            self._stream_letters(text, prefix, wpm)
+            return self._stream_letters(text, prefix, wpm, output_method)
         else:
-            # Word-by-word streaming mode
-            self._stream_words(text, prefix, wpm)
+            return self._stream_words(text, prefix, wpm, output_method)
     
-    def _stream_words(self, text: str, prefix: str, wpm: int):
+    def _stream_words(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
         """Stream text word by word"""
         # Calculate delay between words based on words per minute
         words_per_second = wpm / 60.0
         delay_per_word = 1.0 / words_per_second if words_per_second > 0 else 0
         
         words = text.split()
-        sys.stdout.write(prefix)
-        sys.stdout.flush()
+        full_output = prefix
+        output_method(prefix)
         
         for i, word in enumerate(words):
             # Add space before word (except first word)
             if i > 0:
-                sys.stdout.write(' ')
+                full_output += ' '
+                output_method(' ')
             
-            sys.stdout.write(word)
-            sys.stdout.flush()
+            full_output += word
+            output_method(word)
             
             # Add punctuation pauses
             if word.endswith(('.', '!', '?')):
@@ -263,22 +341,22 @@ class AdvancedChatbot:
             else:
                 time.sleep(delay_per_word)
         
-        print()  # New line at the end
+        output_method('\n')
+        return full_output + '\n'
     
-    def _stream_letters(self, text: str, prefix: str, wpm: int):
-        """NEW: Stream text letter by letter"""
+    def _stream_letters(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
+        """Stream text letter by letter"""
         # Convert words per minute to letters per minute
-        # Average English word length is ~4.7 letters, so we'll use 5 for calculation
         lpm = wpm * 5
         letters_per_second = lpm / 60.0
         delay_per_letter = 1.0 / letters_per_second if letters_per_second > 0 else 0
         
-        sys.stdout.write(prefix)
-        sys.stdout.flush()
+        full_output = prefix
+        output_method(prefix)
         
         for char in text:
-            sys.stdout.write(char)
-            sys.stdout.flush()
+            full_output += char
+            output_method(char)
             
             # Slightly longer pauses for punctuation and spaces
             if char in '.!?':
@@ -290,7 +368,8 @@ class AdvancedChatbot:
             else:
                 time.sleep(delay_per_letter)
         
-        print()  # New line at the end
+        output_method('\n')
+        return full_output + '\n'
     
     def set_streaming_speed(self, wpm: int):
         """Set main response streaming speed in words per minute (0 = off)"""
@@ -307,7 +386,7 @@ class AdvancedChatbot:
         print(f"📝 Additional info streaming {status}")
     
     def toggle_letter_streaming(self):
-        """NEW: Toggle between word and letter streaming modes"""
+        """Toggle between word and letter streaming modes"""
         self.letter_streaming = not self.letter_streaming
         mode = "LETTER-BY-LETTER" if self.letter_streaming else "WORD-BY-WORD"
         print(f"📝 Streaming mode changed to: {mode}")
@@ -987,7 +1066,7 @@ class AdvancedChatbot:
                 self.mark_answer_used(answer_id)
                 answer_variants_tested += 1
                 
-                # NEW: Enhanced progress display showing the actual testing
+                # Enhanced progress display showing the actual testing
                 print(f"  🔍 Testing: '{question}'")
                 print(f"  💬 Answer: '{answer[:80]}{'...' if len(answer) > 80 else ''}'")
                 print(f"  ✅ Match confidence: {result['confidence']:.2f} - {'✓' if result['is_correct_match'] else '✗'}")
@@ -1111,7 +1190,7 @@ class AdvancedChatbot:
         print("Type 'reset' to clear conversation context, 'test' to run systematic test")
         print("Type 'streaming <wpm>' to set main response streaming speed (0 = off)")
         print("Type 'additional_speed <wpm>' to set additional info streaming speed (0 = off)")
-        print("Type 'letter_mode' to toggle between word and letter streaming")  # NEW
+        print("Type 'letter_mode' to toggle between word and letter streaming")
         print(f"✨ Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'}) - {streaming_mode}")
         print(f"✨ Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'}) - {streaming_mode}")
         print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
@@ -1140,7 +1219,7 @@ class AdvancedChatbot:
                     self.run_systematic_test()
                     continue
                 
-                elif user_input.lower() == 'letter_mode':  # NEW
+                elif user_input.lower() == 'letter_mode':
                     self.toggle_letter_streaming()
                     continue
                 
@@ -1245,21 +1324,8 @@ def main():
         print("❌ 'models' folder not found. Please run the training GUI first to create models.")
         return
     
-    # NEW: Enhanced configuration options
-    ENABLE_MODEL_SELECTION = False      # Set to False to auto-select first model
-    STREAMING_SPEED = 500              # Words per minute for main responses (0 = off, try 150-300 for natural speed)
-    ADDITIONAL_INFO_SPEED = 0           # Words per minute for additional info (0 = off)
-    RUN_TESTS_AT_STARTUP = True         # NEW: Set to True to run tests automatically at startup
-    LETTER_STREAMING = True            # NEW: Set to True for letter-by-letter streaming
-    
-    # Initialize chatbot with configuration
-    chatbot = AdvancedChatbot(
-        enable_model_selection=ENABLE_MODEL_SELECTION,
-        streaming_speed=STREAMING_SPEED,
-        additional_info_speed=ADDITIONAL_INFO_SPEED,
-        run_tests_at_startup=RUN_TESTS_AT_STARTUP,      # NEW
-        letter_streaming=LETTER_STREAMING               # NEW
-    )
+    # Initialize chatbot with configuration from config file
+    chatbot = AdvancedChatbot()
 
 if __name__ == "__main__":
     main()

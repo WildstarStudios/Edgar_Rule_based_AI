@@ -31,3 +31,5 @@ after initial code is finished it may not need much more code after. only update
 
 * weather check system
 * current news (tech or world)
+* encrypt file/s
+* web search

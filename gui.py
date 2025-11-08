@@ -4,6 +4,7 @@ import threading
 import time
 import sys
 import os
+import configparser
 
 # Add the directory containing ai_engine.py to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -391,8 +392,24 @@ class MiniChatWindow:
                 correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
                 self.add_mini_message("correction", correction_text)
             
-            # Display the answer
-            self.add_mini_message("bot", answer)
+            # Display the answer using the chatbot's streaming
+            if self.chatbot.streaming_speed > 0:
+                # Use streaming for the answer
+                self.add_mini_message("thinking", "💬 Streaming response...")
+                self.mini_chat_display.config(state=tk.NORMAL)
+                self.mini_chat_display.delete("end-2l", "end-1l")  # Remove thinking indicator
+                self.mini_chat_display.config(state=tk.DISABLED)
+                
+                # Stream the response
+                self.chatbot.stream_text(
+                    answer, 
+                    "🤖 ", 
+                    self.chatbot.streaming_speed,
+                    callback=lambda x: self.mini_window.after(0, lambda: self.stream_to_mini_display(x))
+                )
+            else:
+                # Display immediately without streaming
+                self.add_mini_message("bot", answer)
             
             # Show match information
             if matched_question and confidence > 0 and match_type != "follow_up":
@@ -412,6 +429,13 @@ class MiniChatWindow:
             context_summary = self.chatbot.get_context_summary()
             if context_summary and context_summary != "Minimal context":
                 self.add_mini_message("context", context_summary)
+    
+    def stream_to_mini_display(self, text):
+        """Stream text to mini display"""
+        self.mini_chat_display.config(state=tk.NORMAL)
+        self.mini_chat_display.insert(tk.END, text)
+        self.mini_chat_display.config(state=tk.DISABLED)
+        self.mini_chat_display.see(tk.END)
     
     def mini_processing_complete(self):
         self.is_processing = False
@@ -506,7 +530,15 @@ class DarkChatbotGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Edgar AI Assistant")
-        self.root.geometry("1000x700")
+        
+        # Load configuration
+        self.config = self.load_configuration()
+        
+        # Set window size from config
+        window_width = self.config.getint('gui', 'window_width', fallback=1000)
+        window_height = self.config.getint('gui', 'window_height', fallback=700)
+        self.root.geometry(f"{window_width}x{window_height}")
+        
         self.root.configure(bg='#0f0f23')
         
         # Set window icon and theme (helps with Windows title bar)
@@ -537,15 +569,72 @@ class DarkChatbotGUI:
             'scrollbar_hover': '#5750d3'
         }
         
-        # Initialize chatbot
-        self.chatbot = AdvancedChatbot()
+        # Initialize chatbot with configuration from config file
+        self.chatbot = AdvancedChatbot(
+            config_file="config.cfg",
+            auto_start_chat=False,  # Don't auto-start console chat in GUI
+            streaming_callback=self.handle_streaming_text,  # NEW: Streaming callback
+            thinking_callback=self.handle_thinking,         # NEW: Thinking callback
+            response_complete_callback=self.handle_response_complete  # NEW: Response complete callback
+        )
         
         # GUI variables
         self.is_processing = False
         self.mini_window = None
+        self.current_streaming_text = ""
+        self.is_streaming = False
         
         self.setup_gui()
+    
+    def load_configuration(self):
+        """Load configuration from config file"""
+        config = configparser.ConfigParser()
         
+        # Default configuration
+        defaults = {
+            'gui': {
+                'theme': 'dark',
+                'window_width': '1000',
+                'window_height': '700',
+                'streaming_enabled': 'True'
+            }
+        }
+        
+        # Set defaults
+        for section, options in defaults.items():
+            if not config.has_section(section):
+                config.add_section(section)
+            for key, value in options.items():
+                config.set(section, key, value)
+        
+        # Load from file if exists
+        if os.path.exists("config.cfg"):
+            config.read("config.cfg")
+            print("✅ Loaded GUI configuration from config.cfg")
+        else:
+            print("⚠️  config.cfg not found, using default GUI configuration")
+        
+        return config
+    
+    def handle_streaming_text(self, text):
+        """Handle streaming text from the AI engine"""
+        self.root.after(0, lambda: self.stream_to_display(text))
+    
+    def handle_thinking(self):
+        """Handle thinking indicator from AI engine"""
+        self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
+    
+    def handle_response_complete(self):
+        """Handle response complete from AI engine"""
+        self.root.after(0, self.processing_complete)
+    
+    def stream_to_display(self, text):
+        """Stream text to the main display"""
+        self.chat_display.config(state=tk.NORMAL)
+        self.chat_display.insert(tk.END, text)
+        self.chat_display.config(state=tk.DISABLED)
+        self.chat_display.see(tk.END)
+    
     def setup_gui(self):
         # Main container
         main_container = tk.Frame(self.root, bg=self.colors['bg_primary'])
@@ -591,12 +680,12 @@ class DarkChatbotGUI:
         tk.Label(controls_frame, text="CONTROLS", font=('Arial', 11),
                 bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(anchor='w')
         
-        # Control buttons - ADDED MINI WINDOW BUTTON
+        # Control buttons
         controls = [
             ("🧠 Context", self.show_context),
             ("📊 Statistics", self.show_statistics),
             ("🔄 New Chat", self.reset_chat),
-            ("🪟 Mini Window", self.open_mini_window),  # NEW BUTTON
+            ("🪟 Mini Window", self.open_mini_window),
             ("⚙️ Settings", self.show_settings),
             ("❓ Help", self.show_help)
         ]
@@ -609,6 +698,42 @@ class DarkChatbotGUI:
                           activeforeground=self.colors['text_primary'])
             btn.pack(fill=tk.X, pady=5)
         
+        # Streaming controls
+        streaming_frame = tk.Frame(sidebar, bg=self.colors['bg_secondary'])
+        streaming_frame.pack(fill=tk.X, padx=20, pady=10)
+        
+        tk.Label(streaming_frame, text="STREAMING", font=('Arial', 11),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(anchor='w')
+        
+        # Streaming speed control
+        speed_frame = tk.Frame(streaming_frame, bg=self.colors['bg_secondary'])
+        speed_frame.pack(fill=tk.X, pady=5)
+        
+        tk.Label(speed_frame, text="Speed:", font=('Arial', 9),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(side=tk.LEFT)
+        
+        self.speed_var = tk.StringVar(value=str(self.chatbot.streaming_speed))
+        speed_entry = tk.Entry(speed_frame, textvariable=self.speed_var, width=5,
+                             font=('Arial', 9), bg=self.colors['input_bg'],
+                             fg=self.colors['text_primary'])
+        speed_entry.pack(side=tk.LEFT, padx=5)
+        
+        set_speed_btn = tk.Button(speed_frame, text="Set", 
+                                command=self.set_streaming_speed,
+                                bg=self.colors['accent_primary'],
+                                fg=self.colors['text_primary'],
+                                font=('Arial', 8), relief='flat')
+        set_speed_btn.pack(side=tk.LEFT)
+        
+        # Streaming mode toggle
+        mode_btn = tk.Button(streaming_frame, 
+                           text="Toggle Letter Mode" if not self.chatbot.letter_streaming else "Toggle Word Mode",
+                           command=self.toggle_streaming_mode,
+                           bg=self.colors['bg_tertiary'],
+                           fg=self.colors['text_primary'],
+                           font=('Arial', 9), relief='flat')
+        mode_btn.pack(fill=tk.X, pady=2)
+        
         # Status section
         status_frame = tk.Frame(sidebar, bg=self.colors['bg_secondary'])
         status_frame.pack(fill=tk.X, side=tk.BOTTOM, padx=20, pady=20)
@@ -617,12 +742,43 @@ class DarkChatbotGUI:
                 bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(anchor='w')
         
         self.status_var = tk.StringVar()
-        self.status_var.set("Ready to assist")
+        
+        # Update status with streaming info
+        streaming_mode = "letters" if self.chatbot.letter_streaming else "words"
+        streaming_status = f"Streaming: {self.chatbot.streaming_speed} WPM ({streaming_mode})"
+        self.status_var.set(streaming_status)
+        
         status_label = tk.Label(status_frame, textvariable=self.status_var, 
                               font=('Arial', 9), bg=self.colors['bg_secondary'], 
                               fg=self.colors['text_secondary'])
         status_label.pack(anchor='w', pady=(5, 0))
         
+    def set_streaming_speed(self):
+        """Set streaming speed from GUI"""
+        try:
+            wpm = int(self.speed_var.get())
+            self.chatbot.set_streaming_speed(wpm)
+            
+            # Update status
+            streaming_mode = "letters" if self.chatbot.letter_streaming else "words"
+            streaming_status = f"Streaming: {self.chatbot.streaming_speed} WPM ({streaming_mode})"
+            self.status_var.set(streaming_status)
+            
+            messagebox.showinfo("Success", f"Streaming speed set to {wpm} WPM")
+        except ValueError:
+            messagebox.showerror("Error", "Please enter a valid number for WPM")
+    
+    def toggle_streaming_mode(self):
+        """Toggle between letter and word streaming"""
+        self.chatbot.toggle_letter_streaming()
+        
+        # Update status
+        streaming_mode = "letters" if self.chatbot.letter_streaming else "words"
+        streaming_status = f"Streaming: {self.chatbot.streaming_speed} WPM ({streaming_mode})"
+        self.status_var.set(streaming_status)
+        
+        messagebox.showinfo("Success", f"Streaming mode changed to {streaming_mode.upper()} mode")
+    
     def setup_main_content(self, parent):
         main_content = tk.Frame(parent, bg=self.colors['bg_primary'])
         main_content.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
@@ -731,7 +887,7 @@ class DarkChatbotGUI:
                                    justify='center',
                                    font=('Arial', 8))
         
-        # Quick actions - MOVED TO BE ABOVE INPUT BUT BELOW CHAT
+        # Quick actions
         quick_actions_frame = tk.Frame(main_content, bg=self.colors['bg_primary'])
         quick_actions_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
         
@@ -887,28 +1043,34 @@ How can I assist you today?"""
     
     def process_message(self, user_text):
         try:
-            # Show thinking indicator
-            self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
-            
-            # Process the message using the chatbot
-            responses = self.chatbot.process_multiple_questions(user_text)
-            
-            # Clear thinking indicator
-            self.chat_display.config(state=tk.NORMAL)
-            self.chat_display.delete("end-2l", "end-1l")
-            self.chat_display.config(state=tk.DISABLED)
-            
-            # Update GUI with responses
-            self.root.after(0, lambda: self.display_responses(responses))
+            # Use the AI engine's streaming capabilities
+            if self.chatbot.streaming_speed > 0:
+                # Show thinking indicator
+                self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
+                
+                # Process with streaming
+                responses = self.chatbot.process_multiple_questions(user_text)
+                
+                # Clear thinking indicator
+                self.chat_display.config(state=tk.NORMAL)
+                self.chat_display.delete("end-2l", "end-1l")
+                self.chat_display.config(state=tk.DISABLED)
+                
+                # Display responses with streaming
+                self.root.after(0, lambda: self.display_responses_with_streaming(responses))
+            else:
+                # Process without streaming (immediate display)
+                responses = self.chatbot.process_multiple_questions(user_text)
+                self.root.after(0, lambda: self.display_responses(responses))
             
         except Exception as e:
             self.root.after(0, lambda: self.add_message("error", f"An error occurred: {str(e)}"))
         finally:
             self.root.after(0, self.processing_complete)
     
-    def display_responses(self, responses):
-        """Display chatbot responses in the GUI"""
-        for i, (original_question, answer, confidence, corrections, matched_question, match_type) in enumerate(responses, 1):
+    def display_responses_with_streaming(self, responses):
+        """Display responses using the AI engine's streaming"""
+        for i, (original_question, answer, confidence, corrections, matched_group, match_type) in enumerate(responses, 1):
             
             # Show corrections if any
             if corrections:
@@ -916,11 +1078,62 @@ How can I assist you today?"""
                 correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
                 self.add_message("correction", correction_text)
             
-            # Display the answer
-            self.add_message("bot", answer)
+            # Display the answer using streaming
+            if answer:
+                # Add bot message header
+                timestamp = time.strftime("%H:%M")
+                self.chat_display.config(state=tk.NORMAL)
+                self.chat_display.insert(tk.END, f"\n", 'system')
+                self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
+                self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
+                self.chat_display.config(state=tk.DISABLED)
+                
+                # Stream the response using the AI engine
+                self.chatbot.stream_text(
+                    answer, 
+                    "",  # No prefix since we already added the header
+                    self.chatbot.streaming_speed,
+                    callback=lambda x: self.root.after(0, lambda: self.stream_to_display(x))
+                )
+                
+                # Add separator after streaming completes
+                self.root.after(100, lambda: self.add_message("system", "─" * 60))
             
             # Show match information
-            if matched_question and confidence > 0 and match_type != "follow_up":
+            if matched_group and confidence > 0 and match_type != "follow_up":
+                match_type_display = {
+                    "exact": "🎯 Exact match",
+                    "high_confidence": "✅ High confidence", 
+                    "medium_confidence": "⚠️ Medium confidence",
+                    "low_confidence": "🔍 Low confidence",
+                    "semantic": "🧠 Semantic match",
+                    "unknown": "❓ Unknown question"
+                }
+                display_type = match_type_display.get(match_type, match_type)
+                match_info = f"{display_type} (confidence: {confidence:.2f})"
+                self.add_message("match_info", match_info)
+            
+            # Show context summary if available
+            context_summary = self.chatbot.get_context_summary()
+            if context_summary and context_summary != "Minimal context":
+                self.add_message("context", context_summary)
+    
+    def display_responses(self, responses):
+        """Display responses immediately without streaming"""
+        for i, (original_question, answer, confidence, corrections, matched_group, match_type) in enumerate(responses, 1):
+            
+            # Show corrections if any
+            if corrections:
+                best_correction, best_score = corrections[0]
+                correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
+                self.add_message("correction", correction_text)
+            
+            # Display the answer immediately
+            if answer:
+                self.add_message("bot", answer)
+            
+            # Show match information
+            if matched_group and confidence > 0 and match_type != "follow_up":
                 match_type_display = {
                     "exact": "🎯 Exact match",
                     "high_confidence": "✅ High confidence", 
@@ -942,7 +1155,12 @@ How can I assist you today?"""
         """Called when message processing is complete"""
         self.is_processing = False
         self.send_button.config(state=tk.NORMAL)
-        self.status_var.set("Ready for your message")
+        
+        # Update status with current streaming info
+        streaming_mode = "letters" if self.chatbot.letter_streaming else "words"
+        streaming_status = f"Streaming: {self.chatbot.streaming_speed} WPM ({streaming_mode})"
+        self.status_var.set(streaming_status)
+        
         self.user_input.focus()
     
     def show_context(self):
@@ -1000,7 +1218,21 @@ How can I assist you today?"""
     
     def show_settings(self):
         """Show settings dialog"""
-        messagebox.showinfo("Settings", "Settings panel coming soon!\n\nCurrent features:\n• Dark theme\n• Context awareness\n• Intelligent matching\n• Follow-up responses\n• Mini window mode")
+        settings_text = f"""Current Settings:
+
+AI Engine:
+• Streaming Speed: {self.chatbot.streaming_speed} WPM
+• Streaming Mode: {'Letter-by-Letter' if self.chatbot.letter_streaming else 'Word-by-Word'}
+• Additional Info Speed: {self.chatbot.additional_info_speed} WPM
+• Model: {self.chatbot.current_model}
+
+GUI:
+• Window Size: {self.config.get('gui', 'window_width')}x{self.config.get('gui', 'window_height')}
+• Theme: {self.config.get('gui', 'theme')}
+
+All settings are stored in config.cfg"""
+        
+        messagebox.showinfo("Settings", settings_text)
     
     def show_help(self):
         """Show help information"""
@@ -1017,12 +1249,14 @@ Features:
 • Detailed follow-up information
 • Conversation statistics
 • Mini window (always on top)
+• Real-time text streaming
 
 Tips:
 • Use the quick action buttons for common questions
 • The assistant maintains context across messages
 • Press Enter to send messages quickly
-• Use 'Mini Window' for always-on-top assistance"""
+• Use 'Mini Window' for always-on-top assistance
+• Adjust streaming speed in the sidebar"""
 
         messagebox.showinfo("Assistant Help", help_text)
 
