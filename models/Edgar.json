@@ -1,6 +1,23 @@
 {
   "name": "Edgar",
-  "description": "a rule based ai chatbot",
+  "description": "",
+  "author": "",
+  "version": "1.0.0",
   "created_at": "1762218548.6135838",
-  "qa_groups": []
+  "qa_groups": [
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "Hi"
+      ],
+      "answers": [
+        "hey"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    }
+  ],
+  "updated_at": "1762218548.6135838"
 }

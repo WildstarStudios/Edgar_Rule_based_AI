@@ -33,7 +33,7 @@ class ModelManager:
         """Get the full path for a model file"""
         return os.path.join(self.models_folder, f"{model_name}.json")
     
-    def create_model(self, name, description=""):
+    def create_model(self, name, description="", author="", version="1.0.0"):
         """Create a new model with the given name and description"""
         if not name.strip():
             raise ValueError("Model name cannot be empty")
@@ -45,6 +45,8 @@ class ModelManager:
         model_data = {
             'name': name,
             'description': description,
+            'author': author,
+            'version': version,
             'created_at': str(os.path.getctime(__file__)),
             'qa_groups': []
         }
@@ -70,6 +72,31 @@ class ModelManager:
         self.current_model = name
         return model_data
     
+    def update_model_info(self, name, description="", author="", version=""):
+        """Update model information"""
+        if name not in self.available_models:
+            raise ValueError(f"Model '{name}' not found")
+        
+        model_path = self.get_model_path(name)
+        with open(model_path, 'r') as f:
+            model_data = json.load(f)
+        
+        # Update fields
+        if description is not None:
+            model_data['description'] = description
+        if author is not None:
+            model_data['author'] = author
+        if version is not None:
+            model_data['version'] = version
+        
+        model_data['updated_at'] = str(os.path.getctime(__file__))
+        
+        # Save updated model
+        with open(model_path, 'w') as f:
+            json.dump(model_data, f, indent=2)
+        
+        return model_data
+    
     def save_model(self, name, qa_groups):
         """Save QA groups to a model"""
         model_path = self.get_model_path(name)
@@ -82,6 +109,8 @@ class ModelManager:
             model_data = {
                 'name': name,
                 'description': f"Model {name}",
+                'author': "",
+                'version': "1.0.0",
                 'created_at': str(os.path.getctime(__file__)),
                 'qa_groups': []
             }
@@ -115,13 +144,13 @@ class CreateModelDialog:
         
         self.window = tk.Toplevel(parent)
         self.window.title("Create New Model")
-        self.window.geometry("500x300")
-        self.window.minsize(400, 250)
+        self.window.geometry("500x450")
+        self.window.minsize(450, 400)
         self.window.configure(bg='#2d2d5a')
         
         self.window.transient(parent)
         self.window.grab_set()
-        self.center_window()
+        self.center_window(parent)
         
         self.setup_ui()
         
@@ -129,9 +158,8 @@ class CreateModelDialog:
         self.window.bind('<Escape>', lambda e: self.window.destroy())
         self.window.focus_set()
     
-    def center_window(self):
+    def center_window(self, parent):
         self.window.update_idletasks()
-        parent = self.window.master
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
@@ -173,6 +201,50 @@ class CreateModelDialog:
         self.name_entry.pack(fill=tk.X, pady=(5, 0))
         self.name_entry.focus_set()
         
+        # Author
+        author_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        author_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(
+            author_frame,
+            text="Author:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.author_var = tk.StringVar()
+        tk.Entry(
+            author_frame,
+            textvariable=self.author_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        ).pack(fill=tk.X, pady=(5, 0))
+        
+        # Version
+        version_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        version_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(
+            version_frame,
+            text="Version:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.version_var = tk.StringVar(value="1.0.0")
+        tk.Entry(
+            version_frame,
+            textvariable=self.version_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        ).pack(fill=tk.X, pady=(5, 0))
+        
         # Description
         desc_frame = tk.Frame(main_frame, bg='#2d2d5a')
         desc_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
@@ -187,7 +259,7 @@ class CreateModelDialog:
         
         self.desc_text = scrolledtext.ScrolledText(
             desc_frame,
-            height=6,
+            height=4,
             font=('Arial', 10),
             bg='#1a1a2e',
             fg='white',
@@ -198,7 +270,7 @@ class CreateModelDialog:
         
         # Buttons
         button_frame = tk.Frame(main_frame, bg='#2d2d5a')
-        button_frame.pack(fill=tk.X)
+        button_frame.pack(fill=tk.X, pady=(15, 0))
         
         tk.Button(
             button_frame,
@@ -221,30 +293,223 @@ class CreateModelDialog:
             padx=20,
             pady=8
         ).pack(side=tk.RIGHT)
+        
+        self.window.update_idletasks()
     
     def create_model(self):
         name = self.name_var.get().strip()
         description = self.desc_text.get('1.0', tk.END).strip()
+        author = self.author_var.get().strip()
+        version = self.version_var.get().strip()
         
         if not name:
             messagebox.showwarning("Warning", "Please enter a model name.")
             self.name_entry.focus_set()
             return
         
+        if not version:
+            version = "1.0.0"
+        
         try:
             if self.on_create:
-                self.on_create(name, description)
+                self.on_create(name, description, author, version)
             self.window.destroy()
         except ValueError as e:
             messagebox.showerror("Error", str(e))
             self.name_entry.focus_set()
+
+class EditModelDialog:
+    def __init__(self, parent, model_data, on_save=None):
+        self.on_save = on_save
+        self.model_data = model_data
+        
+        self.window = tk.Toplevel(parent)
+        self.window.title("Edit Model Information")
+        self.window.geometry("500x450")
+        self.window.minsize(450, 400)
+        self.window.configure(bg='#2d2d5a')
+        
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.center_window(parent)
+        
+        self.setup_ui()
+        self.load_data()
+        
+        self.window.bind('<Return>', lambda e: self.save_model())
+        self.window.bind('<Escape>', lambda e: self.window.destroy())
+        self.window.focus_set()
+    
+    def center_window(self, parent):
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
+        self.window.geometry(f"+{x}+{y}")
+    
+    def setup_ui(self):
+        main_frame = tk.Frame(self.window, bg='#2d2d5a')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Title
+        tk.Label(
+            main_frame,
+            text="Edit Model Information",
+            font=('Arial', 16, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w', pady=(0, 20))
+        
+        # Model name (read-only) - FIXED: Using themed label instead of entry
+        name_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        name_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(
+            name_frame,
+            text="Model Name:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.name_var = tk.StringVar()
+        # FIXED: Using themed label instead of readonly entry for better appearance
+        name_display = tk.Label(
+            name_frame,
+            textvariable=self.name_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            anchor='w',
+            relief='sunken',
+            bd=1,
+            padx=8,
+            pady=6
+        )
+        name_display.pack(fill=tk.X, pady=(5, 0))
+        
+        # Author
+        author_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        author_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(
+            author_frame,
+            text="Author:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.author_var = tk.StringVar()
+        tk.Entry(
+            author_frame,
+            textvariable=self.author_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        ).pack(fill=tk.X, pady=(5, 0))
+        
+        # Version
+        version_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        version_frame.pack(fill=tk.X, pady=(0, 15))
+        
+        tk.Label(
+            version_frame,
+            text="Version:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.version_var = tk.StringVar()
+        tk.Entry(
+            version_frame,
+            textvariable=self.version_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        ).pack(fill=tk.X, pady=(5, 0))
+        
+        # Description
+        desc_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        desc_frame.pack(fill=tk.BOTH, expand=True, pady=(0, 20))
+        
+        tk.Label(
+            desc_frame,
+            text="Description:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.desc_text = scrolledtext.ScrolledText(
+            desc_frame,
+            height=4,
+            font=('Arial', 10),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white',
+            wrap=tk.WORD
+        )
+        self.desc_text.pack(fill=tk.BOTH, expand=True, pady=(5, 0))
+        
+        # Buttons
+        button_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        button_frame.pack(fill=tk.X, pady=(15, 0))
+        
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=self.window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT, padx=(10, 0))
+        
+        tk.Button(
+            button_frame,
+            text="💾 Save Changes",
+            command=self.save_model,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT)
+        
+        self.window.update_idletasks()
+    
+    def load_data(self):
+        """Load current model data into the form"""
+        self.name_var.set(self.model_data.get('name', ''))
+        self.author_var.set(self.model_data.get('author', ''))
+        self.version_var.set(self.model_data.get('version', '1.0.0'))
+        self.desc_text.delete('1.0', tk.END)
+        self.desc_text.insert('1.0', self.model_data.get('description', ''))
+    
+    def save_model(self):
+        description = self.desc_text.get('1.0', tk.END).strip()
+        author = self.author_var.get().strip()
+        version = self.version_var.get().strip()
+        
+        if not version:
+            version = "1.0.0"
+        
+        try:
+            if self.on_save:
+                self.on_save(description, author, version)
+            self.window.destroy()
+        except ValueError as e:
+            messagebox.showerror("Error", str(e))
 
 class FollowUpEditor:
     def __init__(self, parent, followup_data=None, on_save=None):
         self.on_save = on_save
         self.followup_data = followup_data or []
         self.selected_node = None
-        self.unsaved_changes = {}  # Track unsaved changes per node
         
         self.window = tk.Toplevel(parent)
         self.window.title("Follow-up Tree Editor")
@@ -254,7 +519,7 @@ class FollowUpEditor:
         
         self.window.transient(parent)
         self.window.grab_set()
-        self.center_window()
+        self.center_window(parent)
         
         self.setup_ui()
         if followup_data:
@@ -262,9 +527,8 @@ class FollowUpEditor:
         
         self.window.bind('<Escape>', lambda e: self.window.destroy())
     
-    def center_window(self):
+    def center_window(self, parent):
         self.window.update_idletasks()
-        parent = self.window.master
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
@@ -349,16 +613,7 @@ class FollowUpEditor:
             pady=4
         ).pack(side=tk.LEFT, padx=(0, 5))
         
-        tk.Button(
-            tree_buttons,
-            text="− Delete",
-            command=self.delete_node,
-            bg='#ff4d7d',
-            fg='white',
-            font=('Arial', 9),
-            padx=12,
-            pady=4
-        ).pack(side=tk.LEFT)
+        # FIXED: Removed the delete button from tree header since it's now in the editor panel
         
         # Tree widget container
         tree_container = tk.Frame(tree_frame, bg='#252547')
@@ -395,18 +650,38 @@ class FollowUpEditor:
         editor_frame.rowconfigure(1, weight=1)
         editor_frame.rowconfigure(3, weight=1)
         
-        # Node info header
+        # Node info header - FIXED: Added delete button here
         info_frame = tk.Frame(editor_frame, bg='#252547')
         info_frame.grid(row=0, column=0, sticky='ew', padx=15, pady=12)
+        info_frame.columnconfigure(0, weight=1)
+        
+        # Title and delete button in one line
+        title_delete_frame = tk.Frame(info_frame, bg='#252547')
+        title_delete_frame.grid(row=0, column=0, sticky='ew', pady=(0, 5))
+        title_delete_frame.columnconfigure(0, weight=1)
         
         self.node_title = tk.Label(
-            info_frame,
+            title_delete_frame,
             text="No node selected",
             font=('Arial', 13, 'bold'),
             bg='#252547',
             fg='white'
         )
-        self.node_title.pack(anchor='w')
+        self.node_title.grid(row=0, column=0, sticky='w')
+        
+        # FIXED: Added delete button next to the title
+        self.delete_button = tk.Button(
+            title_delete_frame,
+            text="🗑️ Delete Node",
+            command=self.delete_node,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 9, 'bold'),
+            padx=12,
+            pady=4,
+            state='disabled'  # Disabled when no node is selected
+        )
+        self.delete_button.grid(row=0, column=1, sticky='e')
         
         self.node_info = tk.Label(
             info_frame,
@@ -415,7 +690,7 @@ class FollowUpEditor:
             bg='#252547',
             fg='#b0b0d0'
         )
-        self.node_info.pack(anchor='w', pady=(2, 0))
+        self.node_info.grid(row=1, column=0, sticky='w', pady=(2, 0))
         
         # Question editor
         q_frame = tk.Frame(editor_frame, bg='#252547')
@@ -541,40 +816,28 @@ class FollowUpEditor:
         node_text = self.tree.item(selected[0], 'text')
         if messagebox.askyesno("Confirm Delete", 
                              f"Delete '{node_text}' and all its branches?\nThis cannot be undone."):
-            # Remove from unsaved changes if present
-            if selected[0] in self.unsaved_changes:
-                del self.unsaved_changes[selected[0]]
-            
             self.tree.delete(selected[0])
             self.selected_node = None
             self.node_title.config(text="No node selected")
             self.node_info.config(text="Select a node to edit its content")
+            self.delete_button.config(state='disabled')  # Disable delete button after deletion
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
     
-    def save_current_node_changes(self):
-        """Save current editor content to unsaved changes"""
-        if self.selected_node:
-            question = self.question_text.get('1.0', tk.END).strip()
-            answer = self.answer_text.get('1.0', tk.END).strip()
-            self.unsaved_changes[self.selected_node] = (question, answer)
-    
     def on_tree_select(self, event=None):
-        # Save changes from current node before switching
-        if self.selected_node:
-            self.save_current_node_changes()
-        
         selected = self.tree.selection()
         if not selected:
             self.selected_node = None
             self.node_title.config(text="No node selected")
             self.node_info.config(text="Select a node to edit its content")
+            self.delete_button.config(state='disabled')  # Disable when no node selected
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
             return
         
         self.selected_node = selected[0]
         item_text = self.tree.item(self.selected_node, 'text')
+        values = self.tree.item(self.selected_node, 'values')
         
         # Update header based on node level
         parent = self.tree.parent(self.selected_node)
@@ -585,17 +848,16 @@ class FollowUpEditor:
             self.node_title.config(text="🌿 Conversation Branch")
             self.node_info.config(text="Continues from previous response")
         
-        # Load content from unsaved changes or tree values
-        if self.selected_node in self.unsaved_changes:
-            question, answer = self.unsaved_changes[self.selected_node]
-        else:
-            values = self.tree.item(self.selected_node, 'values')
-            question, answer = values if values else ("", "")
+        # Enable delete button when a node is selected
+        self.delete_button.config(state='normal')
         
         self.question_text.delete('1.0', tk.END)
         self.answer_text.delete('1.0', tk.END)
-        self.question_text.insert('1.0', question)
-        self.answer_text.insert('1.0', answer)
+        
+        if values:
+            question, answer = values
+            self.question_text.insert('1.0', question)
+            self.answer_text.insert('1.0', answer)
     
     def update_node(self):
         if not self.selected_node:
@@ -618,10 +880,6 @@ class FollowUpEditor:
         # Update tree item with better display text
         display_text = f"💬 {question[:40]}..." if len(question) > 40 else f"💬 {question}"
         self.tree.item(self.selected_node, text=display_text, values=(question, answer))
-        
-        # Remove from unsaved changes since it's now saved
-        if self.selected_node in self.unsaved_changes:
-            del self.unsaved_changes[self.selected_node]
         
         messagebox.showinfo("Success", "Node updated successfully!")
     
@@ -669,9 +927,6 @@ class FollowUpEditor:
         if self.on_save:
             self.on_save(followup_data)
         
-        # Clear unsaved changes after saving
-        self.unsaved_changes.clear()
-        
         messagebox.showinfo("Success", "Follow-up tree saved successfully!")
         self.window.destroy()
 
@@ -689,20 +944,16 @@ class QuestionAnswerEditor:
         # Make dialog modal and center
         self.window.transient(parent)
         self.window.grab_set()
-        self.center_window()
+        self.center_window(parent)
         
         self.setup_ui(initial_text)
         
         # Bind Enter and Escape keys
         self.window.bind('<Return>', lambda e: self.save())
         self.window.bind('<Escape>', lambda e: self.window.destroy())
-        
-        # Set focus to text widget
-        self.text_widget.focus_set()
     
-    def center_window(self):
+    def center_window(self, parent):
         self.window.update_idletasks()
-        parent = self.window.master
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
@@ -734,6 +985,13 @@ class QuestionAnswerEditor:
         )
         self.text_widget.grid(row=0, column=0, sticky='nsew')
         self.text_widget.insert('1.0', initial_text)
+        
+        # FIXED: Set focus to text widget but only select all if it's empty
+        self.text_widget.focus_set()
+        if not initial_text.strip():  # Only select all if it's a new empty item
+            self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
+            self.text_widget.mark_set(tk.INSERT, "1.0")
+        self.text_widget.see(tk.INSERT)
         
         # Button area - ensure it's always visible
         button_frame = tk.Frame(main_frame, bg='#2d2d5a')
@@ -788,7 +1046,464 @@ class QuestionAnswerEditor:
             messagebox.showwarning("Empty", f"Please enter a {self.item_type}.")
             self.text_widget.focus_set()
 
-# ... (GroupEditor class remains mostly the same, just updating the save_group to use model manager)
+# ... (GroupEditor and TrainingGUI classes remain exactly the same as in the previous code)
+
+class GroupEditor:
+    def __init__(self, parent, group_data=None, on_save=None):
+        self.on_save = on_save
+        self.group_data = group_data or {}
+        self.available_topics = ["greeting", "programming", "ai", "gaming", "creative", "thanks", "general"]
+        self.followup_data = []
+        
+        self.window = tk.Toplevel(parent)
+        self.window.title("QA Group Editor")
+        self.window.geometry("900x650")
+        self.window.minsize(700, 500)
+        self.window.configure(bg='#1a1a2e')
+        
+        # Window properties
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.center_window(parent)
+        
+        self.setup_ui()
+        if group_data:
+            self.load_data()
+        
+        # Bind keys
+        self.window.bind('<Escape>', lambda e: self.window.destroy())
+        self.window.focus_set()
+    
+    def center_window(self, parent):
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
+        self.window.geometry(f"+{x}+{y}")
+    
+    def setup_ui(self):
+        # Main container with responsive grid
+        main_frame = tk.Frame(self.window, bg='#1a1a2e')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        # Configure main grid
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=0)  # Header
+        main_frame.rowconfigure(1, weight=0)  # Group info
+        main_frame.rowconfigure(2, weight=1)  # QA sections
+        main_frame.rowconfigure(3, weight=0)  # Settings
+        main_frame.rowconfigure(4, weight=0)  # Action buttons
+        
+        # Header
+        self.setup_header(main_frame).grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        
+        # Group info
+        self.setup_group_info(main_frame).grid(row=1, column=0, sticky='ew', pady=(0, 10))
+        
+        # Questions and Answers
+        self.setup_qa_sections(main_frame).grid(row=2, column=0, sticky='nsew', pady=(0, 10))
+        
+        # Settings
+        self.setup_settings(main_frame).grid(row=3, column=0, sticky='ew', pady=(0, 10))
+        
+        # Bottom action buttons
+        self.setup_action_buttons(main_frame).grid(row=4, column=0, sticky='e')
+    
+    def setup_header(self, parent):
+        header = tk.Frame(parent, bg='#1a1a2e')
+        header.columnconfigure(0, weight=1)
+        
+        tk.Label(
+            header,
+            text="QA Group Editor",
+            font=('Arial', 16, 'bold'),
+            bg='#1a1a2e',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w')
+        
+        return header
+    
+    def setup_group_info(self, parent):
+        frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1, padx=10, pady=10)
+        frame.columnconfigure(1, weight=1)
+        
+        # Group name
+        tk.Label(
+            frame,
+            text="Group Name:",
+            font=('Arial', 10, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w', pady=(0, 8))
+        
+        self.name_var = tk.StringVar(value="New QA Group")
+        name_entry = tk.Entry(
+            frame,
+            textvariable=self.name_var,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='white',
+            insertbackground='white'
+        )
+        name_entry.grid(row=0, column=1, sticky='ew', pady=(0, 8))
+        
+        # Description
+        tk.Label(
+            frame,
+            text="Description:",
+            font=('Arial', 10, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).grid(row=1, column=0, sticky='w', pady=(0, 8))
+        
+        self.desc_var = tk.StringVar()
+        desc_entry = tk.Entry(
+            frame,
+            textvariable=self.desc_var,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='white',
+            insertbackground='white'
+        )
+        desc_entry.grid(row=1, column=1, sticky='ew')
+        
+        return frame
+    
+    def setup_qa_sections(self, parent):
+        container = tk.Frame(parent, bg='#1a1a2e')
+        container.columnconfigure(0, weight=1)
+        container.columnconfigure(1, weight=1)
+        container.rowconfigure(0, weight=1)
+        
+        # Questions section
+        questions_frame = self.create_qa_subsection(container, "Questions", 
+                                                  self.add_question, self.edit_question, self.delete_question)
+        questions_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
+        self.questions_list = questions_frame.winfo_children()[1].winfo_children()[0]
+        
+        # Answers section  
+        answers_frame = self.create_qa_subsection(container, "Answers",
+                                                self.add_answer, self.edit_answer, self.delete_answer)
+        answers_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
+        self.answers_list = answers_frame.winfo_children()[1].winfo_children()[0]
+        
+        return container
+    
+    def create_qa_subsection(self, parent, title, add_cmd, edit_cmd, delete_cmd):
+        frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1)
+        frame.columnconfigure(0, weight=1)
+        frame.rowconfigure(1, weight=1)
+        
+        # Header with title and add button
+        header = tk.Frame(frame, bg='#252547')
+        header.grid(row=0, column=0, sticky='ew', padx=10, pady=8)
+        header.columnconfigure(0, weight=1)
+        
+        tk.Label(
+            header,
+            text=title,
+            font=('Arial', 12, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w')
+        
+        tk.Button(
+            header,
+            text="+ Add",
+            command=add_cmd,
+            bg='#6c63ff',
+            fg='white',
+            font=('Arial', 9),
+            padx=8
+        ).grid(row=0, column=1)
+        
+        # List area with scrollbar
+        list_container = tk.Frame(frame, bg='#252547')
+        list_container.grid(row=1, column=0, sticky='nsew', padx=10, pady=(0, 8))
+        list_container.columnconfigure(0, weight=1)
+        list_container.rowconfigure(0, weight=1)
+        
+        listbox = tk.Listbox(
+            list_container,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='white',
+            selectbackground='#6c63ff',
+            activestyle='none'
+        )
+        listbox.grid(row=0, column=0, sticky='nsew')
+        
+        scrollbar = tk.Scrollbar(list_container, orient=tk.VERTICAL)
+        scrollbar.grid(row=0, column=1, sticky='ns')
+        listbox.config(yscrollcommand=scrollbar.set)
+        scrollbar.config(command=listbox.yview)
+        
+        # Action buttons
+        actions = tk.Frame(frame, bg='#252547')
+        actions.grid(row=2, column=0, sticky='ew', padx=10, pady=(0, 8))
+        
+        tk.Button(
+            actions,
+            text="Edit",
+            command=edit_cmd,
+            bg='#00d4ff',
+            fg='black',
+            font=('Arial', 9),
+            width=8
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        tk.Button(
+            actions,
+            text="Delete",
+            command=delete_cmd,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 9),
+            width=8
+        ).pack(side=tk.LEFT)
+        
+        return frame
+    
+    def setup_settings(self, parent):
+        frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1, padx=10, pady=10)
+        frame.columnconfigure(1, weight=1)
+        
+        # Topic and Priority in one row
+        topic_priority_frame = tk.Frame(frame, bg='#252547')
+        topic_priority_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 15))
+        
+        # Topic
+        tk.Label(
+            topic_priority_frame,
+            text="Topic:",
+            font=('Arial', 10, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.topic_var = tk.StringVar(value="greeting")
+        topic_combo = ttk.Combobox(
+            topic_priority_frame,
+            textvariable=self.topic_var,
+            values=self.available_topics,
+            state='readonly',
+            width=12
+        )
+        topic_combo.pack(side=tk.LEFT, padx=(0, 20))
+        
+        # Priority
+        tk.Label(
+            topic_priority_frame,
+            text="Priority:",
+            font=('Arial', 10, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        self.priority_var = tk.StringVar(value="medium")
+        priority_combo = ttk.Combobox(
+            topic_priority_frame,
+            textvariable=self.priority_var,
+            values=["high", "medium", "low"],
+            state='readonly',
+            width=10
+        )
+        priority_combo.pack(side=tk.LEFT)
+        
+        # Follow-up Tree section
+        followup_frame = tk.Frame(frame, bg='#252547')
+        followup_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(10, 0))
+        
+        tk.Label(
+            followup_frame,
+            text="Follow-up Conversation Tree:",
+            font=('Arial', 11, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).pack(anchor='w', pady=(0, 8))
+        
+        followup_info = tk.Frame(followup_frame, bg='#252547')
+        followup_info.pack(fill=tk.X, pady=(0, 8))
+        
+        self.followup_status = tk.Label(
+            followup_info,
+            text="No follow-up tree defined",
+            font=('Arial', 9),
+            bg='#252547',
+            fg='#b0b0d0'
+        )
+        self.followup_status.pack(side=tk.LEFT)
+        
+        tk.Button(
+            followup_info,
+            text="🌳 Edit Follow-up Tree",
+            command=self.edit_followup_tree,
+            bg='#6c63ff',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=6
+        ).pack(side=tk.RIGHT)
+        
+        # Instructions
+        instructions = tk.Label(
+            followup_frame,
+            text="💡 Create branching conversations that continue after the main answer",
+            font=('Arial', 9),
+            bg='#252547',
+            fg='#00d4ff',
+            justify=tk.LEFT
+        )
+        instructions.pack(anchor='w')
+        
+        return frame
+    
+    def setup_action_buttons(self, parent):
+        frame = tk.Frame(parent, bg='#1a1a2e')
+        
+        tk.Button(
+            frame,
+            text="💾 Save Group",
+            command=self.save_group,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 11, 'bold'),
+            padx=25,
+            pady=10
+        ).pack(side=tk.RIGHT, padx=(15, 0))
+        
+        tk.Button(
+            frame,
+            text="❌ Cancel",
+            command=self.window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 11, 'bold'),
+            padx=25,
+            pady=10
+        ).pack(side=tk.RIGHT)
+        
+        return frame
+    
+    def add_question(self):
+        def save_question(text):
+            self.questions_list.insert(tk.END, text)
+        
+        QuestionAnswerEditor(self.window, "question", on_save=save_question)
+    
+    def edit_question(self):
+        selection = self.questions_list.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a question to edit.")
+            return
+        
+        index = selection[0]
+        current_text = self.questions_list.get(index)
+        
+        def save_question(text):
+            self.questions_list.delete(index)
+            self.questions_list.insert(index, text)
+        
+        QuestionAnswerEditor(self.window, "question", current_text, save_question)
+    
+    def delete_question(self):
+        selection = self.questions_list.curselection()
+        if selection:
+            self.questions_list.delete(selection[0])
+    
+    def add_answer(self):
+        def save_answer(text):
+            self.answers_list.insert(tk.END, text)
+        
+        QuestionAnswerEditor(self.window, "answer", on_save=save_answer)
+    
+    def edit_answer(self):
+        selection = self.answers_list.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select an answer to edit.")
+            return
+        
+        index = selection[0]
+        current_text = self.answers_list.get(index)
+        
+        def save_answer(text):
+            self.answers_list.delete(index)
+            self.answers_list.insert(index, text)
+        
+        QuestionAnswerEditor(self.window, "answer", current_text, save_answer)
+    
+    def delete_answer(self):
+        selection = self.answers_list.curselection()
+        if selection:
+            self.answers_list.delete(selection[0])
+    
+    def edit_followup_tree(self):
+        def on_save(followup_data):
+            self.followup_data = followup_data
+            # Update status label
+            total_nodes = self.count_nodes(followup_data)
+            if total_nodes > 0:
+                self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
+            else:
+                self.followup_status.config(text="No follow-up tree defined")
+        
+        FollowUpEditor(self.window, self.followup_data, on_save)
+    
+    def count_nodes(self, data):
+        count = 0
+        for item in data:
+            count += 1  # Count current node
+            count += self.count_nodes(item.get('children', []))  # Count children recursively
+        return count
+    
+    def load_data(self):
+        # Basic info
+        if 'group_name' in self.group_data:
+            self.name_var.set(self.group_data['group_name'])
+        if 'group_description' in self.group_data:
+            self.desc_var.set(self.group_data['group_description'])
+        
+        # Questions and answers
+        for question in self.group_data.get('questions', []):
+            self.questions_list.insert(tk.END, question)
+        
+        for answer in self.group_data.get('answers', []):
+            self.answers_list.insert(tk.END, answer)
+        
+        # Settings
+        self.topic_var.set(self.group_data.get('topic', 'greeting'))
+        self.priority_var.set(self.group_data.get('priority', 'medium'))
+        
+        # Follow-up tree
+        self.followup_data = self.group_data.get('follow_ups', [])
+        total_nodes = self.count_nodes(self.followup_data)
+        if total_nodes > 0:
+            self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
+    
+    def save_group(self):
+        # Validate
+        if self.questions_list.size() == 0:
+            messagebox.showerror("Error", "At least one question is required.")
+            return
+        
+        if self.answers_list.size() == 0:
+            messagebox.showerror("Error", "At least one answer is required.")
+            return
+        
+        # Collect data
+        group_data = {
+            'group_name': self.name_var.get(),
+            'group_description': self.desc_var.get(),
+            'questions': list(self.questions_list.get(0, tk.END)),
+            'answers': list(self.answers_list.get(0, tk.END)),
+            'topic': self.topic_var.get(),
+            'priority': self.priority_var.get(),
+            'follow_ups': self.followup_data
+        }
+        
+        if self.on_save:
+            self.on_save(group_data)
+        
+        self.window.destroy()
 
 class TrainingGUI:
     def __init__(self, root):
@@ -798,19 +1513,67 @@ class TrainingGUI:
         self.root.minsize(900, 600)
         self.root.configure(bg='#1a1a2e')
         
+        # Initialize attributes first
+        self.current_model = None
+        self.qa_groups = []
+        self.scroll_frame = None
+        
         # Initialize model manager
         self.model_manager = ModelManager(root, self.on_model_changed)
         self.chatbot = AdvancedChatbot()
-        self.qa_groups = []
         
-        # Check if we need to create first model
+        # Configure ttk styles for dark theme BEFORE setting up GUI
+        self.configure_ttk_styles()
+        
+        self.setup_gui()
+        
+        # Check if we need to create first model - AFTER GUI is set up
         if not self.model_manager.available_models:
-            self.prompt_create_first_model()
+            # Use after() to ensure the main window is fully initialized
+            self.root.after(100, self.prompt_create_first_model)
         else:
             # Load the first model by default
             self.load_model(self.model_manager.available_models[0])
+    
+    def configure_ttk_styles(self):
+        """Configure ttk styles to match our dark theme"""
+        style = ttk.Style()
         
-        self.setup_gui()
+        # Try to set a theme that's more customizable
+        try:
+            style.theme_use('clam')  # 'clam' theme is more customizable
+        except:
+            style.theme_use('default')
+        
+        # Configure Combobox style
+        style.configure('Dark.TCombobox',
+            background='#2d2d5a',
+            foreground='white',
+            fieldbackground='#2d2d5a',
+            selectbackground='#6c63ff',
+            selectforeground='white',
+            borderwidth=1,
+            relief='flat',
+            padding=5
+        )
+        
+        style.map('Dark.TCombobox',
+            fieldbackground=[('readonly', '#2d2d5a')],
+            selectbackground=[('readonly', '#6c63ff')],
+            selectforeground=[('readonly', 'white')]
+        )
+        
+        # Configure Scrollbar style
+        style.configure('Dark.Vertical.TScrollbar',
+            background='#252547',
+            troughcolor='#1a1a2e',
+            borderwidth=0,
+            relief='flat'
+        )
+        
+        style.map('Dark.Vertical.TScrollbar',
+            background=[('active', '#6c63ff')]
+        )
     
     def prompt_create_first_model(self):
         """Prompt user to create first model if none exist"""
@@ -819,9 +1582,9 @@ class TrainingGUI:
     
     def create_new_model(self):
         """Open dialog to create a new model"""
-        def on_create(name, description):
+        def on_create(name, description, author, version):
             try:
-                self.model_manager.create_model(name, description)
+                self.model_manager.create_model(name, description, author, version)
                 self.load_model(name)
                 self.update_model_dropdown()
                 messagebox.showinfo("Success", f"Model '{name}' created successfully!")
@@ -830,13 +1593,37 @@ class TrainingGUI:
         
         CreateModelDialog(self.root, on_create)
     
+    def edit_current_model(self):
+        """Edit the current model's information"""
+        if not self.current_model:
+            messagebox.showwarning("Warning", "No model selected.")
+            return
+        
+        try:
+            model_data = self.model_manager.load_model(self.current_model)
+            
+            def on_save(description, author, version):
+                try:
+                    updated_model = self.model_manager.update_model_info(
+                        self.current_model, description, author, version
+                    )
+                    self.update_model_dropdown()
+                    messagebox.showinfo("Success", "Model information updated successfully!")
+                except ValueError as e:
+                    messagebox.showerror("Error", str(e))
+            
+            EditModelDialog(self.root, model_data, on_save)
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load model: {str(e)}")
+    
     def load_model(self, model_name):
         """Load a model by name"""
         try:
             model_data = self.model_manager.load_model(model_name)
             self.qa_groups = model_data.get('qa_groups', [])
             self.current_model = model_name
-            self.refresh_groups()
+            if hasattr(self, 'scroll_frame'):  # Only refresh if GUI is ready
+                self.refresh_groups()
             self.update_model_dropdown()
         except ValueError as e:
             messagebox.showerror("Error", str(e))
@@ -859,7 +1646,7 @@ class TrainingGUI:
         if model_name and model_name != self.current_model:
             # Save current model if needed
             if self.current_model and self.qa_groups:
-                if not messagebox.askyesno("Save Changes", f"Save changes to current model '{self.current_model}' before switching?"):
+                if messagebox.askyesno("Save Changes", f"Save changes to current model '{self.current_model}' before switching?"):
                     self.save_current_model()
             
             self.load_model(model_name)
@@ -917,17 +1704,29 @@ class TrainingGUI:
             font=('Arial', 10)
         ).pack(side=tk.LEFT, padx=(0, 5))
         
+        # FIXED: Use custom styled combobox
         self.model_combobox = ttk.Combobox(
             model_frame,
             values=self.model_manager.available_models,
             state="readonly",
-            width=15
+            width=15,
+            style='Dark.TCombobox'
         )
         self.model_combobox.pack(side=tk.LEFT, padx=(0, 10))
         if self.current_model:
             self.model_combobox.set(self.current_model)
         self.model_combobox.bind('<<ComboboxSelected>>', 
                                lambda e: self.on_model_changed(self.model_combobox.get()))
+        
+        tk.Button(
+            model_frame,
+            text="✏️ Edit",
+            command=self.edit_current_model,
+            bg='#00d4ff',
+            fg='black',
+            font=('Arial', 9),
+            padx=10
+        ).pack(side=tk.LEFT, padx=(0, 10))
         
         tk.Button(
             model_frame,
@@ -1061,7 +1860,14 @@ class TrainingGUI:
         
         # Canvas for scrolling
         self.canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
-        scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        
+        # FIXED: Use styled scrollbar
+        scrollbar = ttk.Scrollbar(
+            container, 
+            orient=tk.VERTICAL, 
+            command=self.canvas.yview,
+            style='Dark.Vertical.TScrollbar'
+        )
         
         self.scroll_frame = tk.Frame(self.canvas, bg='#1a1a2e')
         self.scroll_frame.bind(

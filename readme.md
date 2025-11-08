@@ -23,6 +23,7 @@ after initial code is finished it may not need much more code after. only update
 * follow up system (basic) ✅
 * follow up system tree upgrade ❌
 * python call system (basic) ❌
+* custom binary .rbm format ❌
 
 
 
