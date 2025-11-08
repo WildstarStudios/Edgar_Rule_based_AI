@@ -621,15 +621,7 @@
                         break;
                         
                     case 'error':
-                        if (data.text && data.text.includes('Session expired')) {
-                            // Session expired - refresh the page
-                            addSystemMessage('Session expired. Refreshing...', true);
-                            setTimeout(() => {
-                                window.location.reload();
-                            }, 2000);
-                        } else {
-                            addSystemMessage(data.text, true);
-                        }
+                        addSystemMessage(data.text, true);
                         endStreaming();
                         break;
                         
@@ -642,37 +634,9 @@
             
             eventSource.onerror = function(event) {
                 console.error('Stream error:', event);
-                addSystemMessage('Streaming error. Trying to recover...', true);
-                
-                // Try to refresh session
-                refreshSession().then(success => {
-                    if (success) {
-                        addSystemMessage('Session refreshed. Please try your message again.');
-                    } else {
-                        addSystemMessage('Failed to recover session. Please refresh the page.', true);
-                    }
-                });
-                
+                addSystemMessage('Streaming error', true);
                 endStreaming();
             };
-        }
-        
-        // Refresh session
-        async function refreshSession() {
-            try {
-                const response = await fetch('/api/session/refresh', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                    },
-                });
-                
-                const data = await response.json();
-                return data.success;
-            } catch (error) {
-                console.error('Error refreshing session:', error);
-                return false;
-            }
         }
         
         // End streaming
@@ -917,11 +881,7 @@ Tips:
 • Use the quick action buttons for common questions
 • The assistant maintains context across messages
 • Press Enter to send messages quickly
-• Streaming settings are configured in config.cfg
-
-Session Management:
-• If you see session errors, refresh the page
-• The system automatically recovers from server restarts`;
+• Streaming settings are configured in config.cfg`;
 
             alert(helpText);
         }
