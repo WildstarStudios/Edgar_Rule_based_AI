@@ -5,31 +5,58 @@ import os
 import random
 import time
 import threading
-from typing import List, Dict, Tuple, Optional
+from typing import List, Dict, Tuple, Optional, Callable
 from fuzzywuzzy import fuzz, process
-import nltk
-from nltk.stem import PorterStemmer
-from nltk.tokenize import word_tokenize
-from nltk.corpus import stopwords
 from collections import deque
 
-# Download required NLTK data
+# Optional NLTK imports with fallbacks
 try:
-    nltk.data.find('tokenizers/punkt')
-except LookupError:
-    nltk.download('punkt')
-
-try:
-    nltk.data.find('corpora/stopwords')
-except LookupError:
-    nltk.download('stopwords')
+    import nltk
+    from nltk.stem import PorterStemmer
+    from nltk.tokenize import word_tokenize
+    from nltk.corpus import stopwords
+    
+    # Download required NLTK data with error handling
+    try:
+        nltk.data.find('tokenizers/punkt')
+    except LookupError:
+        try:
+            nltk.download('punkt', quiet=True)
+        except:
+            print("⚠️  Could not download NLTK punkt data. Using fallback tokenizer.")
+    
+    try:
+        nltk.data.find('corpora/stopwords')
+    except LookupError:
+        try:
+            nltk.download('stopwords', quiet=True)
+        except:
+            print("⚠️  Could not download NLTK stopwords. Using minimal stopwords list.")
+    
+    # Initialize NLTK components with fallbacks
+    try:
+        stemmer = PorterStemmer()
+        nltk_stopwords = set(stopwords.words('english'))
+        NLTK_AVAILABLE = True
+    except:
+        stemmer = None
+        nltk_stopwords = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
+        NLTK_AVAILABLE = False
+        
+except ImportError:
+    print("⚠️  NLTK not available. Using simplified text processing.")
+    NLTK_AVAILABLE = False
+    stemmer = None
+    nltk_stopwords = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
 
 class AdvancedChatbot:
-    def __init__(self, database_file: str = "chatbot_database.json"):
-        self.database_file = database_file
-        self.qa_pairs = []
-        self.stemmer = PorterStemmer()
-        self.stop_words = set(stopwords.words('english'))
+    def __init__(self, model_name: str = None):
+        self.models_folder = "models"
+        self.current_model = model_name
+        self.qa_groups = []
+        self.stemmer = stemmer
+        self.stop_words = nltk_stopwords
+        self.nltk_available = NLTK_AVAILABLE
         
         # Enhanced configuration
         self.MATCHING_CONFIG = {
@@ -61,6 +88,11 @@ class AdvancedChatbot:
             'recent_subjects': deque(maxlen=5),
             'last_detailed_topic': None,
             'available_follow_ups': {},
+            'current_group_index': 0,
+            'used_questions': set(),
+            'used_answers': set(),
+            'current_question_index': 0,
+            'current_answer_index': 0
         }
         
         self.performance_stats = {
@@ -71,43 +103,219 @@ class AdvancedChatbot:
             'context_helps': 0,
             'semantic_rejections': 0,
             'follow_up_requests': 0,
+            'groups_tested': 0,
+            'questions_tested': 0,
+            'answers_tested': 0
         }
         
-        self.load_data()
+        # Load available models and select one
+        self.available_models = self.get_available_models()
+        if not self.current_model and self.available_models:
+            self.select_model()
+        
+        if self.current_model:
+            self.load_model_data()
+            # Auto-start chat session after model selection
+            self.chat()
+        else:
+            print("❌ No models available. Please create a model first using the training GUI.")
     
-    def load_data(self):
-        """Load QA pairs from JSON database file"""
+    def get_available_models(self) -> List[str]:
+        """Get list of available models"""
+        models = []
+        if os.path.exists(self.models_folder):
+            for file in os.listdir(self.models_folder):
+                if file.endswith('.json'):
+                    model_name = file[:-5]  # Remove .json extension
+                    models.append(model_name)
+        return sorted(models)
+    
+    def select_model(self):
+        """Let user select a model from available models"""
+        if not self.available_models:
+            print("❌ No models found in 'models' folder.")
+            return
+        
+        print("\n🤖 Available AI Models:")
+        print("=" * 40)
+        for i, model_name in enumerate(self.available_models, 1):
+            print(f"{i}. {model_name}")
+        
+        while True:
+            try:
+                choice = input(f"\nSelect model (1-{len(self.available_models)}): ").strip()
+                if not choice:
+                    continue
+                
+                choice_num = int(choice)
+                if 1 <= choice_num <= len(self.available_models):
+                    self.current_model = self.available_models[choice_num - 1]
+                    print(f"✅ Selected model: {self.current_model}")
+                    break
+                else:
+                    print(f"❌ Please enter a number between 1 and {len(self.available_models)}")
+            except ValueError:
+                print("❌ Please enter a valid number")
+    
+    def load_model_data(self):
+        """Load data from the selected model"""
+        if not self.current_model:
+            print("❌ No model selected")
+            return
+        
+        model_path = os.path.join(self.models_folder, f"{self.current_model}.json")
         try:
-            if os.path.exists(self.database_file):
-                with open(self.database_file, 'r', encoding='utf-8') as f:
-                    self.qa_pairs = json.load(f)
-                print(f"📚 Loaded {len(self.qa_pairs)} question-answer pairs from {self.database_file}")
-            else:
-                print(f"⚠️ Database file {self.database_file} not found. Starting with empty database.")
-                self.qa_pairs = []
+            with open(model_path, 'r') as f:
+                model_data = json.load(f)
+            
+            self.qa_groups = model_data.get('qa_groups', [])
+            print(f"✅ Loaded {len(self.qa_groups)} QA groups from '{self.current_model}'")
+            
+            # Initialize testing state
+            self.initialize_testing_state()
+            
         except Exception as e:
-            print(f"❌ Error loading database: {e}")
-            self.qa_pairs = []
+            print(f"❌ Error loading model: {e}")
+            self.qa_groups = []
     
-    def save_data(self):
-        """Save QA pairs to JSON database file"""
-        try:
-            with open(self.database_file, 'w', encoding='utf-8') as f:
-                json.dump(self.qa_pairs, f, indent=2, ensure_ascii=False)
-            print(f"💾 Saved {len(self.qa_pairs)} QA pairs to {self.database_file}")
-        except Exception as e:
-            print(f"❌ Error saving database: {e}")
+    def initialize_testing_state(self):
+        """Initialize state for systematic testing"""
+        self.conversation_context['current_group_index'] = 0
+        self.conversation_context['used_questions'] = set()
+        self.conversation_context['used_answers'] = set()
+        self.conversation_context['current_question_index'] = 0
+        self.conversation_context['current_answer_index'] = 0
+        
+        # Reset performance stats for testing
+        self.performance_stats.update({
+            'groups_tested': 0,
+            'questions_tested': 0,
+            'answers_tested': 0
+        })
     
-    def add_qa_pair(self, qa_pair: dict):
-        """Add a new QA pair to the database"""
-        self.qa_pairs.append(qa_pair)
-        self.save_data()
+    def get_current_testing_group(self) -> Optional[Dict]:
+        """Get the current group being tested"""
+        if not self.qa_groups:
+            return None
+        
+        current_index = self.conversation_context['current_group_index']
+        if current_index < len(self.qa_groups):
+            return self.qa_groups[current_index]
+        return None
     
-    def remove_qa_pair(self, question: str):
-        """Remove a QA pair by question"""
-        self.qa_pairs = [pair for pair in self.qa_pairs if pair['question'].lower() != question.lower()]
-        self.save_data()
-
+    def get_next_question_variant(self) -> Optional[Tuple[str, str]]:
+        """Get the next question variant to test from current group"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return None
+        
+        questions = current_group.get('questions', [])
+        if not questions:
+            return None
+        
+        # Find next unused question
+        for i, question in enumerate(questions):
+            question_id = f"{self.conversation_context['current_group_index']}_{i}"
+            if question_id not in self.conversation_context['used_questions']:
+                self.conversation_context['current_question_index'] = i
+                return question, question_id
+        
+        return None
+    
+    def get_next_answer_variant(self) -> Optional[str]:
+        """Get the next answer variant to test from current group"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return None
+        
+        answers = current_group.get('answers', [])
+        if not answers:
+            return None
+        
+        # Find next unused answer
+        for i, answer in enumerate(answers):
+            answer_id = f"{self.conversation_context['current_group_index']}_{i}"
+            if answer_id not in self.conversation_context['used_answers']:
+                self.conversation_context['current_answer_index'] = i
+                return answer
+        
+        return None
+    
+    def mark_question_used(self, question_id: str):
+        """Mark a question variant as used"""
+        self.conversation_context['used_questions'].add(question_id)
+        self.performance_stats['questions_tested'] += 1
+    
+    def mark_answer_used(self, answer_id: str):
+        """Mark an answer variant as used"""
+        self.conversation_context['used_answers'].add(answer_id)
+        self.performance_stats['answers_tested'] += 1
+    
+    def move_to_next_group(self):
+        """Move to the next group for testing"""
+        current_group = self.get_current_testing_group()
+        if current_group:
+            self.performance_stats['groups_tested'] += 1
+        
+        self.conversation_context['current_group_index'] += 1
+        self.conversation_context['used_questions'] = set()
+        self.conversation_context['used_answers'] = set()
+        self.conversation_context['current_question_index'] = 0
+        self.conversation_context['current_answer_index'] = 0
+    
+    def is_group_completed(self) -> bool:
+        """Check if all variants in current group have been tested"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return True
+        
+        questions = current_group.get('questions', [])
+        answers = current_group.get('answers', [])
+        
+        # Check if all questions and answers have been used
+        all_questions_used = len(self.conversation_context['used_questions']) >= len(questions)
+        all_answers_used = len(self.conversation_context['used_answers']) >= len(answers)
+        
+        return all_questions_used and all_answers_used
+    
+    def is_testing_complete(self) -> bool:
+        """Check if all groups have been tested"""
+        return self.conversation_context['current_group_index'] >= len(self.qa_groups)
+    
+    def get_testing_progress(self) -> Dict:
+        """Get current testing progress"""
+        if not self.qa_groups:
+            return {'complete': True, 'progress': 0.0}
+        
+        total_groups = len(self.qa_groups)
+        current_group_index = self.conversation_context['current_group_index']
+        
+        if current_group_index >= total_groups:
+            return {'complete': True, 'progress': 1.0}
+        
+        current_group = self.qa_groups[current_group_index]
+        questions = current_group.get('questions', [])
+        answers = current_group.get('answers', [])
+        
+        questions_used = len(self.conversation_context['used_questions'])
+        answers_used = len(self.conversation_context['used_answers'])
+        
+        group_progress = (questions_used + answers_used) / (len(questions) + len(answers)) if (questions and answers) else 1.0
+        
+        overall_progress = (current_group_index + min(group_progress, 1.0)) / total_groups
+        
+        return {
+            'complete': False,
+            'progress': overall_progress,
+            'current_group': current_group_index + 1,
+            'total_groups': total_groups,
+            'current_group_name': current_group.get('group_name', f'Group {current_group_index + 1}'),
+            'questions_tested': questions_used,
+            'total_questions': len(questions),
+            'answers_tested': answers_used,
+            'total_answers': len(answers)
+        }
+    
     # ===== ENHANCED "TELL ME MORE" FUNCTIONALITY =====
     
     def handle_tell_me_more(self, user_input: str) -> Optional[str]:
@@ -145,23 +353,48 @@ class AdvancedChatbot:
         """Handle tell me more about [specific subject]"""
         self.performance_stats['follow_up_requests'] += 1
         
-        # Find the best matching QA pair for this subject
+        # Find the best matching QA group for this subject
         best_match = None
         best_score = 0.0
         
-        for qa_pair in self.qa_pairs:
+        for group in self.qa_groups:
             # Calculate similarity with the subject
-            score = self.calculate_subject_similarity(subject, qa_pair)
+            score = self.calculate_subject_similarity(subject, group)
             if score > best_score and score > 0.3:  # Reasonable threshold
                 best_score = score
-                best_match = qa_pair
+                best_match = group
         
-        if best_match and best_match.get('follow_up_info'):
-            self.conversation_context['last_detailed_topic'] = best_match['question']
-            return best_match['follow_up_info']
-        else:
-            # No specific information found, but try to be helpful
-            return f"I don't have detailed information about '{subject}' specifically. I can tell you about programming languages, game engines, AI concepts, or other technical topics!"
+        if best_match and best_match.get('follow_ups'):
+            follow_up_info = self.extract_follow_up_info(best_match['follow_ups'])
+            if follow_up_info:
+                self.conversation_context['last_detailed_topic'] = best_match.get('group_name', 'Unknown')
+                return follow_up_info
+        
+        # No specific information found, but try to be helpful
+        return f"I don't have detailed information about '{subject}' specifically. I can tell you about {self.get_available_topics()}!"
+    
+    def extract_follow_up_info(self, follow_ups: List) -> str:
+        """Extract follow-up information from the tree structure"""
+        if not follow_ups:
+            return ""
+        
+        info_parts = []
+        for follow_up in follow_ups:
+            branch_name = follow_up.get('branch_name', 'Unknown')
+            question = follow_up.get('question', '')
+            answer = follow_up.get('answer', '')
+            
+            if answer:  # Only include if there's actual content
+                info_parts.append(f"• {branch_name}: {answer}")
+            
+            # Recursively get children
+            children_info = self.extract_follow_up_info(follow_up.get('children', []))
+            if children_info:
+                # Indent child information for better readability
+                indented_children = '\n'.join(f"  {line}" for line in children_info.split('\n'))
+                info_parts.append(indented_children)
+        
+        return "\n".join(info_parts) if info_parts else ""
     
     def handle_context_follow_up(self) -> Optional[str]:
         """Handle general tell me more using conversation context"""
@@ -169,60 +402,68 @@ class AdvancedChatbot:
         
         # Priority 1: Last successful match
         last_match = self.conversation_context.get('last_successful_match')
-        if last_match and last_match.get('follow_up_info'):
-            self.conversation_context['last_detailed_topic'] = last_match['question']
-            return last_match['follow_up_info']
+        if last_match and last_match.get('follow_ups'):
+            follow_up_info = self.extract_follow_up_info(last_match['follow_ups'])
+            if follow_up_info:
+                self.conversation_context['last_detailed_topic'] = last_match.get('group_name', 'Unknown')
+                return follow_up_info
         
         # Priority 2: Current topic
         current_topic = self.conversation_context.get('current_topic')
         if current_topic:
-            # Find a QA pair matching the current topic
-            for qa_pair in self.qa_pairs:
-                if (qa_pair.get('topic') == current_topic and 
-                    qa_pair.get('follow_up_info')):
-                    self.conversation_context['last_detailed_topic'] = qa_pair['question']
-                    return qa_pair['follow_up_info']
-        
-        # Priority 3: Recent subjects
-        if self.conversation_context['recent_subjects']:
-            recent_subject = self.conversation_context['recent_subjects'][-1]
-            for qa_pair in self.qa_pairs:
-                if (recent_subject.lower() in qa_pair['question'].lower() and 
-                    qa_pair.get('follow_up_info')):
-                    self.conversation_context['last_detailed_topic'] = qa_pair['question']
-                    return qa_pair['follow_up_info']
+            # Find a QA group matching the current topic
+            for group in self.qa_groups:
+                if (group.get('topic') == current_topic and 
+                    group.get('follow_ups')):
+                    follow_up_info = self.extract_follow_up_info(group['follow_ups'])
+                    if follow_up_info:
+                        self.conversation_context['last_detailed_topic'] = group.get('group_name', 'Unknown')
+                        return follow_up_info
         
         # Fallback
-        return "I'd be happy to provide more details! Could you be more specific about what you'd like to learn more about? For example, you could say 'tell me more about Python' or 'tell me more about game development'."
+        return "I'd be happy to provide more details! Could you be more specific about what you'd like to learn more about?"
     
-    def calculate_subject_similarity(self, subject: str, qa_pair: dict) -> float:
-        """Calculate how well a subject matches a QA pair"""
+    def calculate_subject_similarity(self, subject: str, group: dict) -> float:
+        """Calculate how well a subject matches a QA group"""
         subject_lower = subject.lower()
-        qa_question_lower = qa_pair['question'].lower()
-        qa_keywords = [kw.lower() for kw in qa_pair.get('keywords', [])]
+        group_name_lower = group.get('group_name', '').lower()
+        group_desc_lower = group.get('group_description', '').lower()
+        group_topic = group.get('topic', '').lower()
         
         scores = []
         
-        # Check direct keyword matches
-        for keyword in qa_keywords:
-            if keyword in subject_lower:
-                scores.append(1.0)
-            elif fuzz.partial_ratio(keyword, subject_lower) > 80:
-                scores.append(0.8)
-        
-        # Check question content
-        if any(keyword in subject_lower for keyword in qa_keywords):
+        # Check group name
+        if group_name_lower and subject_lower in group_name_lower:
             scores.append(0.9)
         
-        # Check fuzzy matching with the question
-        question_similarity = fuzz.partial_ratio(subject_lower, qa_question_lower) / 100.0
-        scores.append(question_similarity * 0.7)
+        # Check group description
+        if group_desc_lower and subject_lower in group_desc_lower:
+            scores.append(0.7)
+        
+        # Check topic
+        if group_topic and subject_lower in group_topic:
+            scores.append(0.8)
+        
+        # Check questions in the group
+        for question in group.get('questions', []):
+            if subject_lower in question.lower():
+                scores.append(0.6)
+                break
         
         return max(scores) if scores else 0.0
     
+    def get_available_topics(self) -> str:
+        """Get string of available topics"""
+        topics = set()
+        for group in self.qa_groups:
+            topic = group.get('topic')
+            if topic:
+                topics.add(topic)
+        return ", ".join(sorted(topics)) if topics else "various topics"
+    
     # ===== ENHANCED CONTEXT SYSTEM =====
     
-    def update_conversation_context(self, user_input: str, bot_response: str, matched_qa: dict = None, confidence: float = 0.0):
+    def update_conversation_context(self, user_input: str, bot_response: str, matched_group: dict = None, confidence: float = 0.0):
         """Enhanced context tracking"""
         # Add to conversation history
         self.conversation_context['conversation_history'].append({
@@ -230,7 +471,7 @@ class AdvancedChatbot:
             'bot': bot_response,
             'timestamp': time.time(),
             'confidence': confidence,
-            'matched_topic': matched_qa.get('topic') if matched_qa else None
+            'matched_topic': matched_group.get('topic') if matched_group else None
         })
         
         # Extract and track meaningful entities
@@ -249,14 +490,9 @@ class AdvancedChatbot:
         self.update_topic_consistency(new_topic)
         
         # Track successful matches
-        if matched_qa and confidence >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['medium_confidence']:
-            # Store the entire QA pair for follow-up information
-            self.conversation_context['last_successful_match'] = matched_qa
+        if matched_group and confidence >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['medium_confidence']:
+            self.conversation_context['last_successful_match'] = matched_group
             self.performance_stats['successful_matches'] += 1
-            
-            # Store available follow-up if exists
-            if matched_qa.get('follow_up_info'):
-                self.conversation_context['available_follow_ups'][matched_qa['question']] = matched_qa['follow_up_info']
         elif confidence > 0:
             self.performance_stats['low_confidence_matches'] += 1
         else:
@@ -290,10 +526,20 @@ class AdvancedChatbot:
         return None
     
     def extract_meaningful_entities(self, text: str) -> List[str]:
-        """Extract meaningful entities"""
+        """Extract meaningful entities with NLTK fallback"""
         entities = []
         text_lower = text.lower()
-        words = word_tokenize(text_lower)
+        
+        try:
+            if self.nltk_available:
+                # Try using NLTK tokenizer
+                words = word_tokenize(text_lower)
+            else:
+                # Fallback: simple space-based tokenization with punctuation removal
+                words = re.findall(r'\b\w+\b', text_lower)
+        except Exception as e:
+            # Ultimate fallback
+            words = re.findall(r'\b\w+\b', text_lower)
         
         for word in words:
             if (len(word) >= 4 and
@@ -309,14 +555,25 @@ class AdvancedChatbot:
         """Detect topic with confidence scoring"""
         text_lower = text.lower()
         
-        topic_patterns = {
+        # Extract topics from actual groups
+        topic_patterns = {}
+        for group in self.qa_groups:
+            topic = group.get('topic')
+            if topic and topic not in topic_patterns:
+                topic_patterns[topic] = {
+                    'keywords': [topic.lower()],
+                    'weight': 1.2
+                }
+        
+        # Add default patterns
+        default_patterns = {
             'greeting': {'keywords': ['hello', 'hi', 'hey', 'greetings'], 'weight': 2.0},
             'thanks': {'keywords': ['thank', 'thanks', 'appreciate', 'grateful'], 'weight': 2.0},
-            'programming': {'keywords': ['python', 'programming', 'code', 'developer'], 'weight': 1.2},
-            'ai': {'keywords': ['machine learning', 'artificial intelligence', 'ai', 'neural network'], 'weight': 1.2},
-            'gaming': {'keywords': ['godot', 'game', 'gaming', 'engine', 'blender'], 'weight': 1.2},
-            'creative': {'keywords': ['blender', '3d', 'animation', 'modeling'], 'weight': 1.2},
         }
+        
+        for topic, pattern in default_patterns.items():
+            if topic not in topic_patterns:
+                topic_patterns[topic] = pattern
         
         topic_scores = {}
         for topic, pattern in topic_patterns.items():
@@ -352,41 +609,36 @@ class AdvancedChatbot:
                 self.conversation_context['topic_consistency_score'] * 0.7 + consistency * 0.3
             )
     
-    # ===== IMPROVED MATCHING SYSTEM WITH MULTIPLE QUESTIONS SUPPORT =====
+    # ===== IMPROVED MATCHING SYSTEM =====
     
     def find_best_match(self, user_question: str) -> Optional[Tuple[dict, float, str]]:
-        """Find best match with improved logic - supports multiple questions per answer set"""
+        """Find best match with improved logic"""
         user_question_lower = user_question.lower().strip()
         
-        # First check for exact matches in all question variations
-        exact_match = self.find_exact_match(user_question_lower)
-        if exact_match:
-            return exact_match, 1.0, "exact"
-        
-        # Check for tell me more patterns first
+        # First check for tell me more patterns
         tell_me_response = self.handle_tell_me_more(user_question)
-        if tell_me_response and "tell me more" in user_question_lower:
-            # Create a temporary QA pair for the follow-up response
-            temp_qa = {
-                "question": user_question,
+        if tell_me_response and any(pattern in user_question_lower for pattern in ['tell me more', 'more information', 'explain more']):
+            # Create a temporary group for the follow-up response
+            temp_group = {
+                "group_name": "Follow-up Information",
+                "questions": [user_question],
                 "answers": [tell_me_response],
-                "topic": "follow_up",
-                "follow_up_info": tell_me_response
+                "topic": "follow_up"
             }
-            return temp_qa, 0.9, "follow_up"
+            return temp_group, 0.9, "follow_up"
         
         # Then proceed with normal matching
         best_match = None
         best_score = 0.0
         best_match_type = "semantic"
         
-        for qa_pair in self.qa_pairs:
-            # Calculate similarity with all question variations
-            base_score = self.calculate_semantic_similarity(user_question, qa_pair)
-            
-            if base_score > best_score and base_score >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
-                best_score = base_score
-                best_match = qa_pair
+        for group in self.qa_groups:
+            for question in group.get('questions', []):
+                base_score = self.calculate_semantic_similarity(user_question, question)
+                
+                if base_score > best_score and base_score >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
+                    best_score = base_score
+                    best_match = group
         
         if best_match:
             # Apply tiered confidence
@@ -406,66 +658,31 @@ class AdvancedChatbot:
         
         return None
     
-    def calculate_semantic_similarity(self, user_question: str, qa_pair: dict) -> float:
-        """Calculate semantic similarity with multiple question support"""
+    def calculate_semantic_similarity(self, user_question: str, db_question: str) -> float:
+        """Calculate semantic similarity between user question and database question"""
         user_lower = user_question.lower()
+        db_lower = db_question.lower()
         
-        # Get all question variations for this QA pair
-        questions = qa_pair.get('questions', [qa_pair['question']])
-        db_keywords = qa_pair.get('keywords', [])
+        # Multiple similarity measures
+        full_similarity = fuzz.token_set_ratio(user_lower, db_lower) / 100.0
         
-        best_similarity = 0.0
-        
-        for question in questions:
-            db_lower = question.lower()
-            
-            # Multiple similarity measures for each question variation
-            full_similarity = fuzz.token_set_ratio(user_lower, db_lower) / 100.0
-            
-            # Keyword matching
-            keyword_score = 0.0
-            if db_keywords:
-                matches = sum(1 for keyword in db_keywords if keyword in user_lower)
-                keyword_score = matches / len(db_keywords)
-            
-            # Combined score for this question variation
-            combined_score = (full_similarity * 0.6 + keyword_score * 0.4)
-            
-            # Keep the best score across all question variations
-            if combined_score > best_similarity:
-                best_similarity = combined_score
-        
-        return min(best_similarity, 1.0)
-    
-    def find_exact_match(self, user_question: str) -> Optional[dict]:
-        """Find exact matches in all question variations"""
-        for qa_pair in self.qa_pairs:
-            # Check all question variations for exact match
-            questions = qa_pair.get('questions', [qa_pair['question']])
-            for question in questions:
-                if question.lower() == user_question:
-                    return qa_pair
-        return None
+        # Combined score
+        return min(full_similarity, 1.0)
     
     def auto_correct_input(self, user_input: str) -> Tuple[str, List[Tuple[str, int]]]:
-        """Auto-correct input with multiple question support"""
+        """Auto-correct input"""
         user_lower = user_input.lower().strip()
         
         if len(user_lower) <= 3:
             return user_input, []
         
-        # Check if input matches any question variation exactly
-        for qa_pair in self.qa_pairs:
-            questions = qa_pair.get('questions', [qa_pair['question']])
-            for question in questions:
-                if question.lower() == user_lower:
-                    return user_input, []
-        
-        # Get all question variations for matching
+        # Get all questions from all groups
         all_questions = []
-        for pair in self.qa_pairs:
-            questions = pair.get('questions', [pair['question']])
-            all_questions.extend(questions)
+        for group in self.qa_groups:
+            all_questions.extend(group.get('questions', []))
+        
+        if any(q.lower() == user_lower for q in all_questions):
+            return user_input, []
         
         matches = process.extract(user_input, all_questions, 
                                 scorer=fuzz.partial_ratio, limit=5)
@@ -535,17 +752,17 @@ class AdvancedChatbot:
             match_result = self.find_best_match(corrected_question)
             
             if match_result:
-                qa_pair, confidence, match_type = match_result
-                answer = self.get_random_answer(qa_pair['answers'])
+                group, confidence, match_type = match_result
+                answer = self.get_random_answer(group.get('answers', []))
                 
                 # Add follow-up suggestion for relevant matches
-                if (qa_pair.get('follow_up_info') and 
+                if (group.get('follow_ups') and 
                     match_type in ['exact', 'high_confidence'] and
                     random.random() < 0.4):
                     answer += " Would you like to know more about this?"
                 
-                responses.append((question, answer, confidence, corrections, qa_pair['question'], match_type))
-                self.update_conversation_context(question, answer, qa_pair, confidence)
+                responses.append((question, answer, confidence, corrections, group.get('group_name', 'Unknown'), match_type))
+                self.update_conversation_context(question, answer, group, confidence)
             else:
                 unknown_response = self.handle_unknown_question(question)
                 responses.append((question, unknown_response, 0.0, corrections, None, "unknown"))
@@ -572,19 +789,144 @@ class AdvancedChatbot:
             base_responses = subject_responses + base_responses
         
         if current_topic:
-            topic_guidance = {
-                'programming': "I can help with programming topics like Python!",
-                'ai': "I know about AI, machine learning, and related technologies!",
-                'gaming': "I can tell you about game development and engines like Godot!",
-            }
-            if current_topic in topic_guidance:
-                base_responses.append(topic_guidance[current_topic])
+            # Find available topics from groups
+            available_topics = self.get_available_topics()
+            base_responses.append(f"I can help with topics like: {available_topics}")
         
         return random.choice(base_responses)
     
     def get_random_answer(self, answers: List[str]) -> str:
-        """Get a random answer from the available answers"""
         return random.choice(answers) if answers else "I don't have an answer for that."
+    
+    # ===== TESTING SYSTEM =====
+    
+    def run_systematic_test(self):
+        """Run systematic test using all question and answer variants"""
+        if not self.qa_groups:
+            print("❌ No QA groups available for testing")
+            return
+        
+        print(f"\n🧪 Starting Systematic Test for '{self.current_model}'")
+        print("=" * 60)
+        
+        self.initialize_testing_state()
+        test_results = []
+        
+        while not self.is_testing_complete():
+            progress = self.get_testing_progress()
+            current_group = self.get_current_testing_group()
+            
+            if not current_group:
+                break
+            
+            print(f"\n📋 Testing Group {progress['current_group']}/{progress['total_groups']}: {current_group.get('group_name', 'Unnamed Group')}")
+            print(f"📊 Progress: {progress['progress']:.1%}")
+            
+            group_results = self.test_current_group()
+            test_results.extend(group_results)
+            
+            self.move_to_next_group()
+        
+        print(f"\n✅ Testing Complete!")
+        print("=" * 60)
+        self.show_test_results(test_results)
+    
+    def test_current_group(self) -> List[Dict]:
+        """Test all variants in the current group"""
+        results = []
+        current_group = self.get_current_testing_group()
+        
+        while not self.is_group_completed():
+            # Get next question variant
+            question_result = self.get_next_question_variant()
+            if not question_result:
+                break
+            
+            question, question_id = question_result
+            
+            # Test this question with all answer variants
+            answer_variants_tested = 0
+            while True:
+                answer = self.get_next_answer_variant()
+                if not answer:
+                    break
+                
+                # Test the combination
+                result = self.test_question_answer_pair(question, answer, current_group)
+                results.append(result)
+                
+                # Mark answer as used
+                answer_id = f"{self.conversation_context['current_group_index']}_{self.conversation_context['current_answer_index']}"
+                self.mark_answer_used(answer_id)
+                answer_variants_tested += 1
+                
+                # Display progress
+                print(f"  ✅ Tested: '{question}' → '{answer[:50]}{'...' if len(answer) > 50 else ''}'")
+            
+            # Mark question as used
+            self.mark_question_used(question_id)
+        
+        return results
+    
+    def test_question_answer_pair(self, question: str, answer: str, group: Dict) -> Dict:
+        """Test a specific question-answer pair"""
+        # Simulate the matching process
+        match_result = self.find_best_match(question)
+        confidence = 0.0
+        match_type = "unknown"
+        
+        if match_result:
+            matched_group, confidence, match_type = match_result
+            # Check if it matched the correct group
+            is_correct_match = matched_group.get('group_name') == group.get('group_name')
+        else:
+            is_correct_match = False
+        
+        return {
+            'question': question,
+            'answer': answer,
+            'group': group.get('group_name'),
+            'confidence': confidence,
+            'match_type': match_type,
+            'is_correct_match': is_correct_match,
+            'timestamp': time.time()
+        }
+    
+    def show_test_results(self, results: List[Dict]):
+        """Display comprehensive test results"""
+        if not results:
+            print("No test results to display")
+            return
+        
+        total_tests = len(results)
+        successful_matches = sum(1 for r in results if r['is_correct_match'])
+        average_confidence = sum(r['confidence'] for r in results) / total_tests if total_tests > 0 else 0
+        
+        print(f"📊 Test Results Summary:")
+        print(f"   Total tests performed: {total_tests}")
+        print(f"   Successful matches: {successful_matches}/{total_tests} ({successful_matches/total_tests:.1%})")
+        print(f"   Average confidence: {average_confidence:.2f}")
+        print(f"   Groups tested: {self.performance_stats['groups_tested']}")
+        print(f"   Questions tested: {self.performance_stats['questions_tested']}")
+        print(f"   Answers tested: {self.performance_stats['answers_tested']}")
+        
+        # Show match type distribution
+        match_types = {}
+        for result in results:
+            match_type = result['match_type']
+            match_types[match_type] = match_types.get(match_type, 0) + 1
+        
+        print(f"\n🎯 Match Type Distribution:")
+        for match_type, count in match_types.items():
+            percentage = count / total_tests
+            print(f"   {match_type}: {count} ({percentage:.1%})")
+        
+        # Show low confidence matches
+        low_confidence = [r for r in results if r['confidence'] < 0.5 and r['is_correct_match']]
+        if low_confidence:
+            print(f"\n⚠️  Low Confidence Correct Matches ({len(low_confidence)}):")
+            for result in low_confidence[:5]:  # Show first 5
+                print(f"   '{result['question']}' (confidence: {result['confidence']:.2f})")
     
     # ===== SIMPLIFIED UTILITY METHODS =====
     
@@ -619,3 +961,119 @@ class AdvancedChatbot:
         print(f"   Success rate: {success_rate:.1%}")
         print(f"   Follow-up requests: {self.performance_stats['follow_up_requests']}")
         print(f"   Failed matches: {self.performance_stats['failed_matches']}")
+        print(f"   Groups in model: {len(self.qa_groups)}")
+    
+    # ===== CHAT INTERFACE =====
+    
+    def chat(self):
+        if not self.qa_groups:
+            print("❌ No model loaded. Cannot start chat.")
+            return
+        
+        print(f"\n🤖 {self.current_model} - Enhanced Chatbot with Follow-up Support")
+        print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
+        print("Type 'reset' to clear conversation context, 'test' to run systematic test")
+        print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
+        print("-" * 60)
+        
+        while True:
+            try:
+                user_input = input("\nYou: ").strip()
+                
+                if not user_input:
+                    continue
+                
+                if user_input.lower() in ['quit', 'exit', 'bye']:
+                    print("🤖 Goodbye! Thanks for chatting!")
+                    break
+                
+                elif user_input.lower() == 'context':
+                    print(f"🧠 Current Context: {self.get_context_summary()}")
+                    continue
+                
+                elif user_input.lower() == 'stats':
+                    self.show_statistics()
+                    continue
+                
+                elif user_input.lower() == 'test':
+                    self.run_systematic_test()
+                    continue
+                
+                elif user_input.lower() == 'reset':
+                    # Preserve testing state but reset conversation context
+                    self.conversation_context.update({
+                        'current_topic': None,
+                        'previous_topics': deque(maxlen=5),
+                        'mentioned_entities': deque(maxlen=15),
+                        'user_preferences': {},
+                        'conversation_history': deque(maxlen=8),
+                        'current_goal': None,
+                        'last_successful_match': None,
+                        'conversation_mood': 'neutral',
+                        'topic_consistency_score': 1.0,
+                        'recent_subjects': deque(maxlen=5),
+                        'last_detailed_topic': None,
+                        'available_follow_ups': {},
+                    })
+                    print("🔄 Conversation context reset!")
+                    continue
+                
+                responses = self.process_multiple_questions(user_input)
+                self.display_responses(responses)
+                
+            except KeyboardInterrupt:
+                print("\n🤖 Chatbot session ended.")
+                break
+            except Exception as e:
+                print(f"🤖 Error: {e}")
+    
+    def display_responses(self, responses: List[Tuple]):
+        """Simplified response display without streaming"""
+        for i, (original_question, answer, confidence, corrections, matched_group, match_type) in enumerate(responses, 1):
+            print(f"\n--- Question {i} ---")
+            print(f"📝 You asked: '{original_question}'")
+            
+            if corrections:
+                best_correction, best_score = corrections[0]
+                print(f"🔧 Auto-corrected to: '{best_correction}' (confidence: {best_score}%)")
+            
+            if answer:
+                print(f"🤖 {answer}")
+                
+                if matched_group and confidence > 0 and match_type != "follow_up":
+                    match_type_display = {
+                        "exact": "🎯 Exact match",
+                        "high_confidence": "✅ High confidence", 
+                        "medium_confidence": "⚠️  Medium confidence",
+                        "low_confidence": "🔍 Low confidence",
+                        "semantic": "🧠 Semantic match",
+                        "follow_up": "📚 Follow-up information",
+                        "unknown": "❓ Unknown question"
+                    }
+                    display_type = match_type_display.get(match_type, match_type)
+                    print(f"💡 {display_type} from group '{matched_group}' (confidence: {confidence:.2f})")
+                
+                context_summary = self.get_context_summary()
+                if context_summary:
+                    print(f"🧠 {context_summary}")
+            else:
+                print("🤖 I don't know how to answer that yet.")
+
+# Main execution
+def main():
+    print("🤖 Edgar AI Engine - Starting...")
+    print("=" * 50)
+    
+    # Check if models folder exists
+    if not os.path.exists("models"):
+        print("❌ 'models' folder not found. Please run the training GUI first to create models.")
+        return
+    
+    # Initialize chatbot - it will automatically prompt for model selection
+    chatbot = AdvancedChatbot()
+    
+    # If we have a model loaded, the chat session will start automatically
+    # If no models are available, it will show an error message
+
+if __name__ == "__main__":
+    main()

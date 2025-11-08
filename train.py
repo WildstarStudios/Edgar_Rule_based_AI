@@ -359,7 +359,7 @@ class EditModelDialog:
             fg='white'
         ).pack(anchor='w', pady=(0, 20))
         
-        # Model name (read-only) - FIXED: Using themed label instead of entry
+        # Model name (read-only)
         name_frame = tk.Frame(main_frame, bg='#2d2d5a')
         name_frame.pack(fill=tk.X, pady=(0, 15))
         
@@ -372,7 +372,6 @@ class EditModelDialog:
         ).pack(anchor='w')
         
         self.name_var = tk.StringVar()
-        # FIXED: Using themed label instead of readonly entry for better appearance
         name_display = tk.Label(
             name_frame,
             textvariable=self.name_var,
@@ -505,6 +504,131 @@ class EditModelDialog:
         except ValueError as e:
             messagebox.showerror("Error", str(e))
 
+class BranchNameDialog:
+    def __init__(self, parent, current_name="", is_root=False, on_save=None):
+        self.on_save = on_save
+        self.is_root = is_root
+        
+        self.window = tk.Toplevel(parent)
+        self.window.title("Name Branch" if not is_root else "Name Conversation Start")
+        self.window.geometry("450x250")
+        self.window.minsize(400, 220)
+        self.window.configure(bg='#2d2d5a')
+        
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.center_window(parent)
+        
+        self.setup_ui(current_name)
+        
+        self.window.bind('<Return>', lambda e: self.save_name())
+        self.window.bind('<Escape>', lambda e: self.window.destroy())
+        self.window.focus_set()
+    
+    def center_window(self, parent):
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
+        self.window.geometry(f"+{x}+{y}")
+    
+    def setup_ui(self, current_name):
+        main_frame = tk.Frame(self.window, bg='#2d2d5a')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        
+        # Title
+        title_text = "Name Conversation Start" if self.is_root else "Name Branch"
+        tk.Label(
+            main_frame,
+            text=title_text,
+            font=('Arial', 14, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w', pady=(0, 15))
+        
+        # Description
+        desc_text = "Give this conversation start a meaningful name for organization:" if self.is_root else "Give this branch a meaningful name:"
+        tk.Label(
+            main_frame,
+            text=desc_text,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='#b0b0d0',
+            wraplength=400,
+            justify=tk.LEFT
+        ).pack(anchor='w', pady=(0, 15))
+        
+        # Name entry
+        name_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        name_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        tk.Label(
+            name_frame,
+            text="Branch Name:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).pack(anchor='w')
+        
+        self.name_var = tk.StringVar(value=current_name)
+        self.name_entry = tk.Entry(
+            name_frame,
+            textvariable=self.name_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        )
+        self.name_entry.pack(fill=tk.X, pady=(5, 0))
+        self.name_entry.focus_set()
+        self.name_entry.select_range(0, tk.END)
+        
+        # Buttons
+        button_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        button_frame.pack(fill=tk.X, pady=(10, 0))
+        
+        # Configure button frame columns
+        button_frame.columnconfigure(0, weight=1)
+        button_frame.columnconfigure(1, weight=0)
+        button_frame.columnconfigure(2, weight=0)
+        
+        # Spacer
+        tk.Label(button_frame, bg='#2d2d5a').grid(row=0, column=0, sticky='ew')
+        
+        # Cancel button
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=self.window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=6
+        ).grid(row=0, column=1, padx=(10, 5))
+        
+        # Save button
+        tk.Button(
+            button_frame,
+            text="💾 Save Name",
+            command=self.save_name,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=6
+        ).grid(row=0, column=2)
+    
+    def save_name(self):
+        name = self.name_var.get().strip()
+        if not name:
+            messagebox.showwarning("Warning", "Please enter a branch name.")
+            self.name_entry.focus_set()
+            return
+        
+        if self.on_save:
+            self.on_save(name)
+        self.window.destroy()
+
 class FollowUpEditor:
     def __init__(self, parent, followup_data=None, on_save=None):
         self.on_save = on_save
@@ -513,8 +637,8 @@ class FollowUpEditor:
         
         self.window = tk.Toplevel(parent)
         self.window.title("Follow-up Tree Editor")
-        self.window.geometry("800x600")
-        self.window.minsize(700, 500)
+        self.window.geometry("900x650")
+        self.window.minsize(800, 550)
         self.window.configure(bg='#1a1a2e')
         
         self.window.transient(parent)
@@ -535,12 +659,12 @@ class FollowUpEditor:
     
     def setup_ui(self):
         main_frame = tk.Frame(self.window, bg='#1a1a2e')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=0)  # Header
-        main_frame.rowconfigure(1, weight=1)  # Content
-        main_frame.rowconfigure(2, weight=0)  # Buttons
+        main_frame.rowconfigure(0, weight=0)
+        main_frame.rowconfigure(1, weight=1)
+        main_frame.rowconfigure(2, weight=0)
         
         # Header
         header = tk.Frame(main_frame, bg='#1a1a2e')
@@ -557,8 +681,8 @@ class FollowUpEditor:
         # Content area
         content = tk.Frame(main_frame, bg='#1a1a2e')
         content.grid(row=1, column=0, sticky='nsew', pady=(0, 15))
-        content.columnconfigure(0, weight=1)
-        content.columnconfigure(1, weight=2)
+        content.columnconfigure(0, weight=2)
+        content.columnconfigure(1, weight=3)
         content.rowconfigure(0, weight=1)
         
         # Tree panel
@@ -572,13 +696,14 @@ class FollowUpEditor:
     
     def setup_tree_panel(self, parent):
         tree_frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1)
-        tree_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 10))
+        tree_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 15))
         tree_frame.columnconfigure(0, weight=1)
         tree_frame.rowconfigure(1, weight=1)
         
         # Tree header with buttons
         tree_header = tk.Frame(tree_frame, bg='#252547')
-        tree_header.grid(row=0, column=0, sticky='ew', padx=10, pady=10)
+        tree_header.grid(row=0, column=0, sticky='ew', padx=15, pady=12)
+        tree_header.columnconfigure(0, weight=1)
         
         tk.Label(
             tree_header,
@@ -586,10 +711,10 @@ class FollowUpEditor:
             font=('Arial', 12, 'bold'),
             bg='#252547',
             fg='white'
-        ).pack(side=tk.LEFT)
+        ).grid(row=0, column=0, sticky='w')
         
         tree_buttons = tk.Frame(tree_header, bg='#252547')
-        tree_buttons.pack(side=tk.RIGHT)
+        tree_buttons.grid(row=0, column=1, sticky='e')
         
         tk.Button(
             tree_buttons,
@@ -597,10 +722,11 @@ class FollowUpEditor:
             command=self.add_root_node,
             bg='#6c63ff',
             fg='white',
-            font=('Arial', 9),
-            padx=12,
-            pady=4
-        ).pack(side=tk.LEFT, padx=(0, 5))
+            font=('Arial', 9, 'bold'),
+            padx=20,
+            pady=6,
+            width=10
+        ).pack(side=tk.LEFT, padx=(0, 8))
         
         tk.Button(
             tree_buttons,
@@ -608,20 +734,19 @@ class FollowUpEditor:
             command=self.add_child_node,
             bg='#00d4ff',
             fg='black',
-            font=('Arial', 9),
-            padx=12,
-            pady=4
-        ).pack(side=tk.LEFT, padx=(0, 5))
-        
-        # FIXED: Removed the delete button from tree header since it's now in the editor panel
+            font=('Arial', 9, 'bold'),
+            padx=20,
+            pady=6,
+            width=10
+        ).pack(side=tk.LEFT)
         
         # Tree widget container
         tree_container = tk.Frame(tree_frame, bg='#252547')
-        tree_container.grid(row=1, column=0, sticky='nsew', padx=10, pady=(0, 10))
+        tree_container.grid(row=1, column=0, sticky='nsew', padx=15, pady=(0, 15))
         tree_container.columnconfigure(0, weight=1)
         tree_container.rowconfigure(0, weight=1)
         
-        # Style the treeview to match our theme
+        # Style the treeview
         style = ttk.Style()
         style.theme_use('default')
         style.configure("Treeview",
@@ -642,26 +767,30 @@ class FollowUpEditor:
         tree_scroll.grid(row=0, column=1, sticky='ns')
         
         self.tree.bind('<<TreeviewSelect>>', self.on_tree_select)
+        self.tree.bind('<Double-1>', self.on_tree_double_click)
     
     def setup_editor_panel(self, parent):
         editor_frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1)
         editor_frame.grid(row=0, column=1, sticky='nsew')
         editor_frame.columnconfigure(0, weight=1)
-        editor_frame.rowconfigure(1, weight=1)
+        editor_frame.rowconfigure(0, weight=0)
+        editor_frame.rowconfigure(1, weight=0)
+        editor_frame.rowconfigure(2, weight=1)
         editor_frame.rowconfigure(3, weight=1)
+        editor_frame.rowconfigure(4, weight=0)
         
-        # Node info header - FIXED: Added delete button here
-        info_frame = tk.Frame(editor_frame, bg='#252547')
-        info_frame.grid(row=0, column=0, sticky='ew', padx=15, pady=12)
-        info_frame.columnconfigure(0, weight=1)
+        # Branch name section
+        name_frame = tk.Frame(editor_frame, bg='#252547')
+        name_frame.grid(row=0, column=0, sticky='ew', padx=15, pady=12)
+        name_frame.columnconfigure(0, weight=1)
         
-        # Title and delete button in one line
-        title_delete_frame = tk.Frame(info_frame, bg='#252547')
-        title_delete_frame.grid(row=0, column=0, sticky='ew', pady=(0, 5))
-        title_delete_frame.columnconfigure(0, weight=1)
+        # Title and edit button
+        title_edit_frame = tk.Frame(name_frame, bg='#252547')
+        title_edit_frame.grid(row=0, column=0, sticky='ew', pady=(0, 8))
+        title_edit_frame.columnconfigure(0, weight=1)
         
         self.node_title = tk.Label(
-            title_delete_frame,
+            title_edit_frame,
             text="No node selected",
             font=('Arial', 13, 'bold'),
             bg='#252547',
@@ -669,32 +798,57 @@ class FollowUpEditor:
         )
         self.node_title.grid(row=0, column=0, sticky='w')
         
-        # FIXED: Added delete button next to the title
+        # Edit Name button
+        self.edit_name_button = tk.Button(
+            title_edit_frame,
+            text="✏️ Edit Name",
+            command=self.edit_branch_name,
+            bg='#6c63ff',
+            fg='white',
+            font=('Arial', 9, 'bold'),
+            padx=12,
+            pady=4,
+            state='disabled'
+        )
+        self.edit_name_button.grid(row=0, column=1, sticky='e', padx=(0, 8))
+        
+        # Delete button
         self.delete_button = tk.Button(
-            title_delete_frame,
-            text="🗑️ Delete Node",
+            title_edit_frame,
+            text="🗑️ Delete",
             command=self.delete_node,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 9, 'bold'),
             padx=12,
             pady=4,
-            state='disabled'  # Disabled when no node is selected
+            state='disabled'
         )
-        self.delete_button.grid(row=0, column=1, sticky='e')
+        self.delete_button.grid(row=0, column=2, sticky='e')
         
-        self.node_info = tk.Label(
-            info_frame,
-            text="Select a node to edit its content",
+        # Branch name display
+        self.branch_name_display = tk.Label(
+            name_frame,
+            text="Select a node to view details",
             font=('Arial', 10),
             bg='#252547',
             fg='#b0b0d0'
         )
-        self.node_info.grid(row=1, column=0, sticky='w', pady=(2, 0))
+        self.branch_name_display.grid(row=1, column=0, sticky='w', pady=(2, 0))
+        
+        # Node info
+        self.node_info = tk.Label(
+            name_frame,
+            text="Select a node to edit its content",
+            font=('Arial', 9),
+            bg='#252547',
+            fg='#b0b0d0'
+        )
+        self.node_info.grid(row=2, column=0, sticky='w', pady=(2, 0))
         
         # Question editor
         q_frame = tk.Frame(editor_frame, bg='#252547')
-        q_frame.grid(row=1, column=0, sticky='nsew', padx=15, pady=(0, 10))
+        q_frame.grid(row=2, column=0, sticky='nsew', padx=15, pady=(0, 10))
         q_frame.columnconfigure(0, weight=1)
         q_frame.rowconfigure(1, weight=1)
         
@@ -721,7 +875,7 @@ class FollowUpEditor:
         
         # Answer editor
         a_frame = tk.Frame(editor_frame, bg='#252547')
-        a_frame.grid(row=2, column=0, sticky='nsew', padx=15, pady=(0, 10))
+        a_frame.grid(row=3, column=0, sticky='nsew', padx=15, pady=(0, 10))
         a_frame.columnconfigure(0, weight=1)
         a_frame.rowconfigure(1, weight=1)
         
@@ -748,7 +902,7 @@ class FollowUpEditor:
         
         # Update button
         update_frame = tk.Frame(editor_frame, bg='#252547')
-        update_frame.grid(row=3, column=0, sticky='ew', padx=15, pady=(0, 12))
+        update_frame.grid(row=4, column=0, sticky='ew', padx=15, pady=(0, 12))
         
         tk.Button(
             update_frame,
@@ -788,10 +942,13 @@ class FollowUpEditor:
         ).pack(side=tk.RIGHT)
     
     def add_root_node(self):
-        item = self.tree.insert('', 'end', text="🌱 New Conversation Start", values=("", ""))
-        self.tree.selection_set(item)
-        self.tree.focus(item)
-        self.on_tree_select()
+        def save_name(branch_name):
+            item = self.tree.insert('', 'end', text=f"🌱 {branch_name}", values=(branch_name, "", ""))
+            self.tree.selection_set(item)
+            self.tree.focus(item)
+            self.on_tree_select()
+        
+        BranchNameDialog(self.window, "New Conversation Start", is_root=True, on_save=save_name)
     
     def add_child_node(self):
         selected = self.tree.selection()
@@ -799,13 +956,40 @@ class FollowUpEditor:
             messagebox.showwarning("Warning", "Please select a parent node first to add a branch.")
             return
         
-        parent = selected[0]
-        item = self.tree.insert(parent, 'end', text="🌿 New Branch", values=("", ""))
-        self.tree.selection_set(item)
-        self.tree.focus(item)
-        self.on_tree_select()
-        # Expand parent to show new child
-        self.tree.item(parent, open=True)
+        def save_name(branch_name):
+            parent = selected[0]
+            item = self.tree.insert(parent, 'end', text=f"🌿 {branch_name}", values=(branch_name, "", ""))
+            self.tree.selection_set(item)
+            self.tree.focus(item)
+            self.on_tree_select()
+            self.tree.item(parent, open=True)
+        
+        BranchNameDialog(self.window, "New Branch", is_root=False, on_save=save_name)
+    
+    def edit_branch_name(self):
+        if not self.selected_node:
+            return
+        
+        current_values = self.tree.item(self.selected_node, 'values')
+        current_name = current_values[0] if current_values else ""
+        
+        def save_name(new_name):
+            current_values = list(self.tree.item(self.selected_node, 'values'))
+            if len(current_values) >= 1:
+                current_values[0] = new_name
+                parent = self.tree.parent(self.selected_node)
+                prefix = "🌱 " if parent == '' else "🌿 "
+                self.tree.item(self.selected_node, text=f"{prefix}{new_name}", values=tuple(current_values))
+                self.on_tree_select()
+        
+        BranchNameDialog(self.window, current_name, is_root=(self.tree.parent(self.selected_node) == ''), on_save=save_name)
+    
+    def on_tree_double_click(self, event):
+        item = self.tree.identify('item', event.x, event.y)
+        if item:
+            self.tree.selection_set(item)
+            self.selected_node = item
+            self.edit_branch_name()
     
     def delete_node(self):
         selected = self.tree.selection()
@@ -819,8 +1003,10 @@ class FollowUpEditor:
             self.tree.delete(selected[0])
             self.selected_node = None
             self.node_title.config(text="No node selected")
+            self.branch_name_display.config(text="Select a node to view details")
             self.node_info.config(text="Select a node to edit its content")
-            self.delete_button.config(state='disabled')  # Disable delete button after deletion
+            self.delete_button.config(state='disabled')
+            self.edit_name_button.config(state='disabled')
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
     
@@ -829,8 +1015,10 @@ class FollowUpEditor:
         if not selected:
             self.selected_node = None
             self.node_title.config(text="No node selected")
+            self.branch_name_display.config(text="Select a node to view details")
             self.node_info.config(text="Select a node to edit its content")
-            self.delete_button.config(state='disabled')  # Disable when no node selected
+            self.delete_button.config(state='disabled')
+            self.edit_name_button.config(state='disabled')
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
             return
@@ -839,7 +1027,6 @@ class FollowUpEditor:
         item_text = self.tree.item(self.selected_node, 'text')
         values = self.tree.item(self.selected_node, 'values')
         
-        # Update header based on node level
         parent = self.tree.parent(self.selected_node)
         if parent == '':
             self.node_title.config(text="🗣️ Conversation Starter")
@@ -848,14 +1035,17 @@ class FollowUpEditor:
             self.node_title.config(text="🌿 Conversation Branch")
             self.node_info.config(text="Continues from previous response")
         
-        # Enable delete button when a node is selected
         self.delete_button.config(state='normal')
+        self.edit_name_button.config(state='normal')
+        
+        branch_name = values[0] if values else "Unnamed"
+        self.branch_name_display.config(text=f"Branch: {branch_name}")
         
         self.question_text.delete('1.0', tk.END)
         self.answer_text.delete('1.0', tk.END)
         
-        if values:
-            question, answer = values
+        if values and len(values) >= 3:
+            question, answer = values[1], values[2]
             self.question_text.insert('1.0', question)
             self.answer_text.insert('1.0', answer)
     
@@ -877,26 +1067,31 @@ class FollowUpEditor:
             self.answer_text.focus_set()
             return
         
-        # Update tree item with better display text
-        display_text = f"💬 {question[:40]}..." if len(question) > 40 else f"💬 {question}"
-        self.tree.item(self.selected_node, text=display_text, values=(question, answer))
+        current_values = list(self.tree.item(self.selected_node, 'values'))
+        branch_name = current_values[0] if current_values else "Unnamed"
+        
+        parent = self.tree.parent(self.selected_node)
+        prefix = "🌱 " if parent == '' else "🌿 "
+        self.tree.item(self.selected_node, text=f"{prefix}{branch_name}", values=(branch_name, question, answer))
         
         messagebox.showinfo("Success", "Node updated successfully!")
     
     def load_data(self):
         def add_children(parent_item, children):
             for child in children:
+                branch_name = child.get('branch_name', 'Unnamed Branch')
                 question = child.get('question', '')
                 answer = child.get('answer', '')
-                display_text = f"💬 {question[:40]}..." if len(question) > 40 else f"💬 {question}"
-                item = self.tree.insert(parent_item, 'end', text=display_text, values=(question, answer))
+                display_text = f"🌿 {branch_name}"
+                item = self.tree.insert(parent_item, 'end', text=display_text, values=(branch_name, question, answer))
                 add_children(item, child.get('children', []))
         
         for item in self.followup_data:
+            branch_name = item.get('branch_name', 'Conversation Start')
             question = item.get('question', '')
             answer = item.get('answer', '')
-            display_text = f"🌱 {question[:40]}..." if len(question) > 40 else f"🌱 {question}"
-            root_item = self.tree.insert('', 'end', text=display_text, values=(question, answer))
+            display_text = f"🌱 {branch_name}"
+            root_item = self.tree.insert('', 'end', text=display_text, values=(branch_name, question, answer))
             add_children(root_item, item.get('children', []))
     
     def save_tree(self):
@@ -904,9 +1099,11 @@ class FollowUpEditor:
             children = []
             for child_id in self.tree.get_children(parent_item):
                 values = self.tree.item(child_id, 'values')
-                question = values[0] if values else ""
-                answer = values[1] if len(values) > 1 else ""
+                branch_name = values[0] if values else "Unnamed"
+                question = values[1] if len(values) > 1 else ""
+                answer = values[2] if len(values) > 2 else ""
                 children.append({
+                    'branch_name': branch_name,
                     'question': question,
                     'answer': answer,
                     'children': get_children(child_id)
@@ -916,9 +1113,11 @@ class FollowUpEditor:
         followup_data = []
         for root_id in self.tree.get_children(''):
             values = self.tree.item(root_id, 'values')
-            question = values[0] if values else ""
-            answer = values[1] if len(values) > 1 else ""
+            branch_name = values[0] if values else "Conversation Start"
+            question = values[1] if len(values) > 1 else ""
+            answer = values[2] if len(values) > 2 else ""
             followup_data.append({
+                'branch_name': branch_name,
                 'question': question,
                 'answer': answer,
                 'children': get_children(root_id)
@@ -941,14 +1140,12 @@ class QuestionAnswerEditor:
         self.window.minsize(400, 300)
         self.window.configure(bg='#2d2d5a')
         
-        # Make dialog modal and center
         self.window.transient(parent)
         self.window.grab_set()
         self.center_window(parent)
         
         self.setup_ui(initial_text)
         
-        # Bind Enter and Escape keys
         self.window.bind('<Return>', lambda e: self.save())
         self.window.bind('<Escape>', lambda e: self.window.destroy())
     
@@ -959,15 +1156,13 @@ class QuestionAnswerEditor:
         self.window.geometry(f"+{x}+{y}")
     
     def setup_ui(self, initial_text):
-        # Main container with responsive grid
         main_frame = tk.Frame(self.window, bg='#2d2d5a')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
         
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=1)  # Text area
-        main_frame.rowconfigure(1, weight=0)  # Button area
+        main_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=0)
         
-        # Text area with scrollbar
         text_container = tk.Frame(main_frame, bg='#2d2d5a')
         text_container.grid(row=0, column=0, sticky='nsew', pady=(0, 10))
         text_container.columnconfigure(0, weight=1)
@@ -986,23 +1181,19 @@ class QuestionAnswerEditor:
         self.text_widget.grid(row=0, column=0, sticky='nsew')
         self.text_widget.insert('1.0', initial_text)
         
-        # FIXED: Set focus to text widget but only select all if it's empty
         self.text_widget.focus_set()
-        if not initial_text.strip():  # Only select all if it's a new empty item
+        if not initial_text.strip():
             self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
             self.text_widget.mark_set(tk.INSERT, "1.0")
         self.text_widget.see(tk.INSERT)
         
-        # Button area - ensure it's always visible
         button_frame = tk.Frame(main_frame, bg='#2d2d5a')
         button_frame.grid(row=1, column=0, sticky='ew', pady=(10, 0))
         
-        # Configure button frame columns
         button_frame.columnconfigure(0, weight=1)
         button_frame.columnconfigure(1, weight=0)
         button_frame.columnconfigure(2, weight=0)
         
-        # Status label
         self.status_label = tk.Label(
             button_frame,
             text=f"Editing {self.item_type}...",
@@ -1012,7 +1203,6 @@ class QuestionAnswerEditor:
         )
         self.status_label.grid(row=0, column=0, sticky='w')
         
-        # Action buttons
         tk.Button(
             button_frame, 
             text="❌ Cancel", 
@@ -1046,8 +1236,6 @@ class QuestionAnswerEditor:
             messagebox.showwarning("Empty", f"Please enter a {self.item_type}.")
             self.text_widget.focus_set()
 
-# ... (GroupEditor and TrainingGUI classes remain exactly the same as in the previous code)
-
 class GroupEditor:
     def __init__(self, parent, group_data=None, on_save=None):
         self.on_save = on_save
@@ -1061,7 +1249,6 @@ class GroupEditor:
         self.window.minsize(700, 500)
         self.window.configure(bg='#1a1a2e')
         
-        # Window properties
         self.window.transient(parent)
         self.window.grab_set()
         self.center_window(parent)
@@ -1070,7 +1257,6 @@ class GroupEditor:
         if group_data:
             self.load_data()
         
-        # Bind keys
         self.window.bind('<Escape>', lambda e: self.window.destroy())
         self.window.focus_set()
     
@@ -1081,31 +1267,20 @@ class GroupEditor:
         self.window.geometry(f"+{x}+{y}")
     
     def setup_ui(self):
-        # Main container with responsive grid
         main_frame = tk.Frame(self.window, bg='#1a1a2e')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
         
-        # Configure main grid
         main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=0)  # Header
-        main_frame.rowconfigure(1, weight=0)  # Group info
-        main_frame.rowconfigure(2, weight=1)  # QA sections
-        main_frame.rowconfigure(3, weight=0)  # Settings
-        main_frame.rowconfigure(4, weight=0)  # Action buttons
+        main_frame.rowconfigure(0, weight=0)
+        main_frame.rowconfigure(1, weight=0)
+        main_frame.rowconfigure(2, weight=1)
+        main_frame.rowconfigure(3, weight=0)
+        main_frame.rowconfigure(4, weight=0)
         
-        # Header
         self.setup_header(main_frame).grid(row=0, column=0, sticky='ew', pady=(0, 10))
-        
-        # Group info
         self.setup_group_info(main_frame).grid(row=1, column=0, sticky='ew', pady=(0, 10))
-        
-        # Questions and Answers
         self.setup_qa_sections(main_frame).grid(row=2, column=0, sticky='nsew', pady=(0, 10))
-        
-        # Settings
         self.setup_settings(main_frame).grid(row=3, column=0, sticky='ew', pady=(0, 10))
-        
-        # Bottom action buttons
         self.setup_action_buttons(main_frame).grid(row=4, column=0, sticky='e')
     
     def setup_header(self, parent):
@@ -1126,7 +1301,6 @@ class GroupEditor:
         frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1, padx=10, pady=10)
         frame.columnconfigure(1, weight=1)
         
-        # Group name
         tk.Label(
             frame,
             text="Group Name:",
@@ -1146,7 +1320,6 @@ class GroupEditor:
         )
         name_entry.grid(row=0, column=1, sticky='ew', pady=(0, 8))
         
-        # Description
         tk.Label(
             frame,
             text="Description:",
@@ -1174,13 +1347,11 @@ class GroupEditor:
         container.columnconfigure(1, weight=1)
         container.rowconfigure(0, weight=1)
         
-        # Questions section
         questions_frame = self.create_qa_subsection(container, "Questions", 
                                                   self.add_question, self.edit_question, self.delete_question)
         questions_frame.grid(row=0, column=0, sticky='nsew', padx=(0, 5))
         self.questions_list = questions_frame.winfo_children()[1].winfo_children()[0]
         
-        # Answers section  
         answers_frame = self.create_qa_subsection(container, "Answers",
                                                 self.add_answer, self.edit_answer, self.delete_answer)
         answers_frame.grid(row=0, column=1, sticky='nsew', padx=(5, 0))
@@ -1193,7 +1364,6 @@ class GroupEditor:
         frame.columnconfigure(0, weight=1)
         frame.rowconfigure(1, weight=1)
         
-        # Header with title and add button
         header = tk.Frame(frame, bg='#252547')
         header.grid(row=0, column=0, sticky='ew', padx=10, pady=8)
         header.columnconfigure(0, weight=1)
@@ -1216,7 +1386,6 @@ class GroupEditor:
             padx=8
         ).grid(row=0, column=1)
         
-        # List area with scrollbar
         list_container = tk.Frame(frame, bg='#252547')
         list_container.grid(row=1, column=0, sticky='nsew', padx=10, pady=(0, 8))
         list_container.columnconfigure(0, weight=1)
@@ -1237,7 +1406,6 @@ class GroupEditor:
         listbox.config(yscrollcommand=scrollbar.set)
         scrollbar.config(command=listbox.yview)
         
-        # Action buttons
         actions = tk.Frame(frame, bg='#252547')
         actions.grid(row=2, column=0, sticky='ew', padx=10, pady=(0, 8))
         
@@ -1267,11 +1435,9 @@ class GroupEditor:
         frame = tk.Frame(parent, bg='#252547', relief='raised', bd=1, padx=10, pady=10)
         frame.columnconfigure(1, weight=1)
         
-        # Topic and Priority in one row
         topic_priority_frame = tk.Frame(frame, bg='#252547')
         topic_priority_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 15))
         
-        # Topic
         tk.Label(
             topic_priority_frame,
             text="Topic:",
@@ -1290,7 +1456,6 @@ class GroupEditor:
         )
         topic_combo.pack(side=tk.LEFT, padx=(0, 20))
         
-        # Priority
         tk.Label(
             topic_priority_frame,
             text="Priority:",
@@ -1309,7 +1474,6 @@ class GroupEditor:
         )
         priority_combo.pack(side=tk.LEFT)
         
-        # Follow-up Tree section
         followup_frame = tk.Frame(frame, bg='#252547')
         followup_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(10, 0))
         
@@ -1344,7 +1508,6 @@ class GroupEditor:
             pady=6
         ).pack(side=tk.RIGHT)
         
-        # Instructions
         instructions = tk.Label(
             followup_frame,
             text="💡 Create branching conversations that continue after the main answer",
@@ -1439,7 +1602,6 @@ class GroupEditor:
     def edit_followup_tree(self):
         def on_save(followup_data):
             self.followup_data = followup_data
-            # Update status label
             total_nodes = self.count_nodes(followup_data)
             if total_nodes > 0:
                 self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
@@ -1451,36 +1613,31 @@ class GroupEditor:
     def count_nodes(self, data):
         count = 0
         for item in data:
-            count += 1  # Count current node
-            count += self.count_nodes(item.get('children', []))  # Count children recursively
+            count += 1
+            count += self.count_nodes(item.get('children', []))
         return count
     
     def load_data(self):
-        # Basic info
         if 'group_name' in self.group_data:
             self.name_var.set(self.group_data['group_name'])
         if 'group_description' in self.group_data:
             self.desc_var.set(self.group_data['group_description'])
         
-        # Questions and answers
         for question in self.group_data.get('questions', []):
             self.questions_list.insert(tk.END, question)
         
         for answer in self.group_data.get('answers', []):
             self.answers_list.insert(tk.END, answer)
         
-        # Settings
         self.topic_var.set(self.group_data.get('topic', 'greeting'))
         self.priority_var.set(self.group_data.get('priority', 'medium'))
         
-        # Follow-up tree
         self.followup_data = self.group_data.get('follow_ups', [])
         total_nodes = self.count_nodes(self.followup_data)
         if total_nodes > 0:
             self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
     
     def save_group(self):
-        # Validate
         if self.questions_list.size() == 0:
             messagebox.showerror("Error", "At least one question is required.")
             return
@@ -1489,7 +1646,6 @@ class GroupEditor:
             messagebox.showerror("Error", "At least one answer is required.")
             return
         
-        # Collect data
         group_data = {
             'group_name': self.name_var.get(),
             'group_description': self.desc_var.get(),
@@ -1513,39 +1669,29 @@ class TrainingGUI:
         self.root.minsize(900, 600)
         self.root.configure(bg='#1a1a2e')
         
-        # Initialize attributes first
         self.current_model = None
         self.qa_groups = []
         self.scroll_frame = None
         
-        # Initialize model manager
         self.model_manager = ModelManager(root, self.on_model_changed)
         self.chatbot = AdvancedChatbot()
         
-        # Configure ttk styles for dark theme BEFORE setting up GUI
         self.configure_ttk_styles()
-        
         self.setup_gui()
         
-        # Check if we need to create first model - AFTER GUI is set up
         if not self.model_manager.available_models:
-            # Use after() to ensure the main window is fully initialized
             self.root.after(100, self.prompt_create_first_model)
         else:
-            # Load the first model by default
             self.load_model(self.model_manager.available_models[0])
     
     def configure_ttk_styles(self):
-        """Configure ttk styles to match our dark theme"""
         style = ttk.Style()
         
-        # Try to set a theme that's more customizable
         try:
-            style.theme_use('clam')  # 'clam' theme is more customizable
+            style.theme_use('clam')
         except:
             style.theme_use('default')
         
-        # Configure Combobox style
         style.configure('Dark.TCombobox',
             background='#2d2d5a',
             foreground='white',
@@ -1563,7 +1709,6 @@ class TrainingGUI:
             selectforeground=[('readonly', 'white')]
         )
         
-        # Configure Scrollbar style
         style.configure('Dark.Vertical.TScrollbar',
             background='#252547',
             troughcolor='#1a1a2e',
@@ -1576,12 +1721,10 @@ class TrainingGUI:
         )
     
     def prompt_create_first_model(self):
-        """Prompt user to create first model if none exist"""
         messagebox.showinfo("Welcome", "No AI models found. Let's create your first model!")
         self.create_new_model()
     
     def create_new_model(self):
-        """Open dialog to create a new model"""
         def on_create(name, description, author, version):
             try:
                 self.model_manager.create_model(name, description, author, version)
@@ -1594,7 +1737,6 @@ class TrainingGUI:
         CreateModelDialog(self.root, on_create)
     
     def edit_current_model(self):
-        """Edit the current model's information"""
         if not self.current_model:
             messagebox.showwarning("Warning", "No model selected.")
             return
@@ -1617,19 +1759,17 @@ class TrainingGUI:
             messagebox.showerror("Error", f"Failed to load model: {str(e)}")
     
     def load_model(self, model_name):
-        """Load a model by name"""
         try:
             model_data = self.model_manager.load_model(model_name)
             self.qa_groups = model_data.get('qa_groups', [])
             self.current_model = model_name
-            if hasattr(self, 'scroll_frame'):  # Only refresh if GUI is ready
+            if hasattr(self, 'scroll_frame'):
                 self.refresh_groups()
             self.update_model_dropdown()
         except ValueError as e:
             messagebox.showerror("Error", str(e))
     
     def save_current_model(self):
-        """Save current QA groups to the current model"""
         if not self.current_model:
             messagebox.showwarning("Warning", "No model selected. Please create or load a model first.")
             return
@@ -1642,9 +1782,7 @@ class TrainingGUI:
             return False
     
     def on_model_changed(self, model_name):
-        """Callback when model is changed"""
         if model_name and model_name != self.current_model:
-            # Save current model if needed
             if self.current_model and self.qa_groups:
                 if messagebox.askyesno("Save Changes", f"Save changes to current model '{self.current_model}' before switching?"):
                     self.save_current_model()
@@ -1652,31 +1790,23 @@ class TrainingGUI:
             self.load_model(model_name)
     
     def update_model_dropdown(self):
-        """Update the model dropdown with current available models"""
         if hasattr(self, 'model_combobox'):
             self.model_combobox['values'] = self.model_manager.available_models
             if self.current_model:
                 self.model_combobox.set(self.current_model)
     
     def setup_gui(self):
-        # Main container
         main_frame = tk.Frame(self.root, bg='#1a1a2e')
         main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
         
-        # Header with model selection
         self.setup_header(main_frame)
-        
-        # Search and actions
         self.setup_toolbar(main_frame)
-        
-        # Groups list
         self.setup_groups_list(main_frame)
     
     def setup_header(self, parent):
         header = tk.Frame(parent, bg='#1a1a2e')
         header.pack(fill=tk.X, pady=(0, 15))
         
-        # Left side - Title
         left_frame = tk.Frame(header, bg='#1a1a2e')
         left_frame.pack(side=tk.LEFT)
         
@@ -1688,11 +1818,9 @@ class TrainingGUI:
             fg='white'
         ).pack(side=tk.LEFT)
         
-        # Right side - Model selection and stats
         right_frame = tk.Frame(header, bg='#1a1a2e')
         right_frame.pack(side=tk.RIGHT)
         
-        # Model selection
         model_frame = tk.Frame(right_frame, bg='#1a1a2e')
         model_frame.pack(side=tk.LEFT, padx=(0, 20))
         
@@ -1704,7 +1832,6 @@ class TrainingGUI:
             font=('Arial', 10)
         ).pack(side=tk.LEFT, padx=(0, 5))
         
-        # FIXED: Use custom styled combobox
         self.model_combobox = ttk.Combobox(
             model_frame,
             values=self.model_manager.available_models,
@@ -1738,7 +1865,6 @@ class TrainingGUI:
             padx=10
         ).pack(side=tk.LEFT)
         
-        # Stats
         stats_frame = tk.Frame(right_frame, bg='#1a1a2e')
         stats_frame.pack(side=tk.LEFT)
         
@@ -1772,11 +1898,9 @@ class TrainingGUI:
         toolbar = tk.Frame(parent, bg='#1a1a2e')
         toolbar.pack(fill=tk.X, pady=(0, 15))
         
-        # Search section - better organized
         search_container = tk.Frame(toolbar, bg='#1a1a2e')
         search_container.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
-        # Search label and entry in one line
         search_line = tk.Frame(search_container, bg='#1a1a2e')
         search_line.pack(fill=tk.X)
         
@@ -1801,7 +1925,6 @@ class TrainingGUI:
         search_entry.pack(side=tk.LEFT, padx=(5, 15))
         self.search_var.trace('w', self.on_search)
         
-        # Search mode radio buttons - closer to search bar
         self.search_mode = tk.StringVar(value="both")
         mode_frame = tk.Frame(search_line, bg='#1a1a2e')
         mode_frame.pack(side=tk.LEFT)
@@ -1816,11 +1939,10 @@ class TrainingGUI:
                 fg='white',
                 selectcolor='#6c63ff',
                 font=('Arial', 9),
-                command=self.on_search  # Update search when radio button changes
+                command=self.on_search
             )
             rb.pack(side=tk.LEFT, padx=(0, 8))
         
-        # Actions
         actions = tk.Frame(toolbar, bg='#1a1a2e')
         actions.pack(side=tk.RIGHT)
         
@@ -1858,10 +1980,8 @@ class TrainingGUI:
         container = tk.Frame(parent, bg='#1a1a2e')
         container.pack(fill=tk.BOTH, expand=True)
         
-        # Canvas for scrolling
         self.canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
         
-        # FIXED: Use styled scrollbar
         scrollbar = ttk.Scrollbar(
             container, 
             orient=tk.VERTICAL, 
@@ -1881,7 +2001,6 @@ class TrainingGUI:
         self.canvas.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
-        # Mouse wheel binding
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
     
     def on_mousewheel(self, event):
@@ -1891,11 +2010,9 @@ class TrainingGUI:
         self.refresh_groups()
     
     def refresh_groups(self):
-        # Clear current display
         for widget in self.scroll_frame.winfo_children():
             widget.destroy()
         
-        # Filter groups
         search_term = self.search_var.get().lower()
         search_mode = self.search_mode.get()
         
@@ -1910,17 +2027,15 @@ class TrainingGUI:
                         search_term in group.get('group_description', '').lower())
             elif search_mode == "name":
                 match = search_term in group['group_name'].lower()
-            else:  # description
+            else:
                 match = search_term in group.get('group_description', '').lower()
             
             if match:
                 filtered_groups.append(group)
         
-        # Display groups
         for i, group in enumerate(filtered_groups):
             self.create_group_card(group, i)
         
-        # Update stats
         total_questions = sum(len(g['questions']) for g in self.qa_groups)
         total_answers = sum(len(g['answers']) for g in self.qa_groups)
         
@@ -1928,7 +2043,6 @@ class TrainingGUI:
         self.stats_vars["Questions"].set(str(total_questions))
         self.stats_vars["Answers"].set(str(total_answers))
         
-        # Update canvas
         self.canvas.configure(scrollregion=self.canvas.bbox("all"))
     
     def create_group_card(self, group, index):
@@ -1938,11 +2052,9 @@ class TrainingGUI:
         content = tk.Frame(card, bg='#252547')
         content.pack(fill=tk.X, padx=12, pady=10)
         
-        # Header
         header = tk.Frame(content, bg='#252547')
         header.pack(fill=tk.X, pady=(0, 6))
         
-        # Title and description
         text_frame = tk.Frame(header, bg='#252547')
         text_frame.pack(side=tk.LEFT, fill=tk.X, expand=True)
         
@@ -1963,7 +2075,6 @@ class TrainingGUI:
                 fg='#b0b0d0'
             ).pack(anchor='w', pady=(1, 0))
         
-        # Actions
         actions = tk.Frame(header, bg='#252547')
         actions.pack(side=tk.RIGHT)
         
@@ -1987,7 +2098,6 @@ class TrainingGUI:
             padx=8
         ).pack(side=tk.LEFT)
         
-        # Stats
         stats = tk.Frame(content, bg='#252547')
         stats.pack(fill=tk.X)
         
@@ -2004,8 +2114,8 @@ class TrainingGUI:
     def count_followup_nodes(self, data):
         count = 0
         for item in data:
-            count += 1  # Count current node
-            count += self.count_followup_nodes(item.get('children', []))  # Count children recursively
+            count += 1
+            count += self.count_followup_nodes(item.get('children', []))
         return count
     
     def new_group(self):

@@ -9,15 +9,19 @@
       "group_name": "New QA Group",
       "group_description": "",
       "questions": [
-        "Hi"
+        "Hi",
+        "hello",
+        "hey"
       ],
       "answers": [
-        "hey"
+        "hey",
+        "hello",
+        "Hi"
       ],
       "topic": "greeting",
       "priority": "medium",
       "follow_ups": []
     }
   ],
-  "updated_at": "1762218548.6135838"
+  "updated_at": "1762569755.4462352"
 }
