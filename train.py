@@ -2,7 +2,6 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog, simpledialog
-from ai_engine import AdvancedChatbot
 
 class ModelManager:
     def __init__(self, parent, on_model_change=None):
@@ -1674,7 +1673,6 @@ class TrainingGUI:
         self.scroll_frame = None
         
         self.model_manager = ModelManager(root, self.on_model_changed)
-        self.chatbot = AdvancedChatbot()
         
         self.configure_ttk_styles()
         self.setup_gui()

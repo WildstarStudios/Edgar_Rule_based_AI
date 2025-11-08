@@ -6,8 +6,8 @@
   "created_at": "1762218548.6135838",
   "qa_groups": [
     {
-      "group_name": "New QA Group",
-      "group_description": "",
+      "group_name": "Greeting",
+      "group_description": "to say hi",
       "questions": [
         "Hi",
         "hello",
@@ -17,6 +17,19 @@
         "hello i am edgar a rule based ai assistant coded for use in wildstar studios"
       ],
       "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "Godot",
+      "group_description": "info about godot",
+      "questions": [
+        "what is godot"
+      ],
+      "answers": [
+        "godot is a open source game engine created in 2014 by Juan Linietsky and Ariel Manzur."
+      ],
+      "topic": "general",
       "priority": "medium",
       "follow_ups": []
     }

@@ -18,17 +18,15 @@ after initial code is finished it may not need much more code after. only update
 
 
 \# planned
-
-* sentence matching with confidence ❌
+* sentence matching with confidence ✅
 * follow up system (basic) ✅
-* follow up system tree upgrade ❌
+* follow up system tree upgrade ✅
 * python call system (basic) ❌
 * custom binary .rbm format ❌
 
 
 
 \# planned modules
-
 * weather check system
 * current news (tech or world)
 * encrypt file/s
