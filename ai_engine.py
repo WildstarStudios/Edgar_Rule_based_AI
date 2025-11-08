@@ -5,6 +5,7 @@ import os
 import random
 import time
 import threading
+import sys
 from typing import List, Dict, Tuple, Optional, Callable
 from fuzzywuzzy import fuzz, process
 from collections import deque
@@ -50,9 +51,13 @@ except ImportError:
     nltk_stopwords = set(['the', 'a', 'an', 'and', 'or', 'but', 'in', 'on', 'at', 'to', 'for', 'of', 'with', 'by'])
 
 class AdvancedChatbot:
-    def __init__(self, model_name: str = None):
+    def __init__(self, model_name: str = None, enable_model_selection: bool = True, 
+                 streaming_speed: int = 0, additional_info_speed: int = 0):
         self.models_folder = "models"
         self.current_model = model_name
+        self.enable_model_selection = enable_model_selection
+        self.streaming_speed = streaming_speed  # Words per minute (0 = off) - for main responses only
+        self.additional_info_speed = additional_info_speed  # Words per minute (0 = off) - for match info and context
         self.qa_groups = []
         self.stemmer = stemmer
         self.stop_words = nltk_stopwords
@@ -110,8 +115,14 @@ class AdvancedChatbot:
         
         # Load available models and select one
         self.available_models = self.get_available_models()
-        if not self.current_model and self.available_models:
-            self.select_model()
+        
+        if not self.current_model:
+            if self.enable_model_selection and self.available_models:
+                self.select_model()
+            elif self.available_models:
+                # Auto-select first model
+                self.current_model = self.available_models[0]
+                print(f"✅ Auto-selected model: {self.current_model}")
         
         if self.current_model:
             self.load_model_data()
@@ -193,128 +204,55 @@ class AdvancedChatbot:
             'answers_tested': 0
         })
     
-    def get_current_testing_group(self) -> Optional[Dict]:
-        """Get the current group being tested"""
-        if not self.qa_groups:
-            return None
-        
-        current_index = self.conversation_context['current_group_index']
-        if current_index < len(self.qa_groups):
-            return self.qa_groups[current_index]
-        return None
+    # ===== STREAMING FUNCTIONALITY =====
     
-    def get_next_question_variant(self) -> Optional[Tuple[str, str]]:
-        """Get the next question variant to test from current group"""
-        current_group = self.get_current_testing_group()
-        if not current_group:
-            return None
+    def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None):
+        """Stream text word by word with adjustable speed"""
+        if wpm is None:
+            wpm = self.streaming_speed
+            
+        if wpm == 0:
+            # Streaming disabled - print immediately
+            print(f"{prefix}{text}")
+            return
         
-        questions = current_group.get('questions', [])
-        if not questions:
-            return None
+        # Calculate delay between words based on words per minute
+        words_per_second = wpm / 60.0
+        delay_per_word = 1.0 / words_per_second if words_per_second > 0 else 0
         
-        # Find next unused question
-        for i, question in enumerate(questions):
-            question_id = f"{self.conversation_context['current_group_index']}_{i}"
-            if question_id not in self.conversation_context['used_questions']:
-                self.conversation_context['current_question_index'] = i
-                return question, question_id
+        words = text.split()
+        sys.stdout.write(prefix)
+        sys.stdout.flush()
         
-        return None
+        for i, word in enumerate(words):
+            # Add space before word (except first word)
+            if i > 0:
+                sys.stdout.write(' ')
+            
+            sys.stdout.write(word)
+            sys.stdout.flush()
+            
+            # Add punctuation pauses
+            if word.endswith(('.', '!', '?')):
+                time.sleep(delay_per_word * 1.5)  # Longer pause at sentence end
+            elif word.endswith((',', ';', ':')):
+                time.sleep(delay_per_word * 1.2)  # Slightly longer pause at clauses
+            else:
+                time.sleep(delay_per_word)
+        
+        print()  # New line at the end
     
-    def get_next_answer_variant(self) -> Optional[str]:
-        """Get the next answer variant to test from current group"""
-        current_group = self.get_current_testing_group()
-        if not current_group:
-            return None
-        
-        answers = current_group.get('answers', [])
-        if not answers:
-            return None
-        
-        # Find next unused answer
-        for i, answer in enumerate(answers):
-            answer_id = f"{self.conversation_context['current_group_index']}_{i}"
-            if answer_id not in self.conversation_context['used_answers']:
-                self.conversation_context['current_answer_index'] = i
-                return answer
-        
-        return None
+    def set_streaming_speed(self, wpm: int):
+        """Set main response streaming speed in words per minute (0 = off)"""
+        self.streaming_speed = max(0, wpm)
+        status = "disabled" if wpm == 0 else f"set to {wpm} WPM"
+        print(f"📝 Main response streaming {status}")
     
-    def mark_question_used(self, question_id: str):
-        """Mark a question variant as used"""
-        self.conversation_context['used_questions'].add(question_id)
-        self.performance_stats['questions_tested'] += 1
-    
-    def mark_answer_used(self, answer_id: str):
-        """Mark an answer variant as used"""
-        self.conversation_context['used_answers'].add(answer_id)
-        self.performance_stats['answers_tested'] += 1
-    
-    def move_to_next_group(self):
-        """Move to the next group for testing"""
-        current_group = self.get_current_testing_group()
-        if current_group:
-            self.performance_stats['groups_tested'] += 1
-        
-        self.conversation_context['current_group_index'] += 1
-        self.conversation_context['used_questions'] = set()
-        self.conversation_context['used_answers'] = set()
-        self.conversation_context['current_question_index'] = 0
-        self.conversation_context['current_answer_index'] = 0
-    
-    def is_group_completed(self) -> bool:
-        """Check if all variants in current group have been tested"""
-        current_group = self.get_current_testing_group()
-        if not current_group:
-            return True
-        
-        questions = current_group.get('questions', [])
-        answers = current_group.get('answers', [])
-        
-        # Check if all questions and answers have been used
-        all_questions_used = len(self.conversation_context['used_questions']) >= len(questions)
-        all_answers_used = len(self.conversation_context['used_answers']) >= len(answers)
-        
-        return all_questions_used and all_answers_used
-    
-    def is_testing_complete(self) -> bool:
-        """Check if all groups have been tested"""
-        return self.conversation_context['current_group_index'] >= len(self.qa_groups)
-    
-    def get_testing_progress(self) -> Dict:
-        """Get current testing progress"""
-        if not self.qa_groups:
-            return {'complete': True, 'progress': 0.0}
-        
-        total_groups = len(self.qa_groups)
-        current_group_index = self.conversation_context['current_group_index']
-        
-        if current_group_index >= total_groups:
-            return {'complete': True, 'progress': 1.0}
-        
-        current_group = self.qa_groups[current_group_index]
-        questions = current_group.get('questions', [])
-        answers = current_group.get('answers', [])
-        
-        questions_used = len(self.conversation_context['used_questions'])
-        answers_used = len(self.conversation_context['used_answers'])
-        
-        group_progress = (questions_used + answers_used) / (len(questions) + len(answers)) if (questions and answers) else 1.0
-        
-        overall_progress = (current_group_index + min(group_progress, 1.0)) / total_groups
-        
-        return {
-            'complete': False,
-            'progress': overall_progress,
-            'current_group': current_group_index + 1,
-            'total_groups': total_groups,
-            'current_group_name': current_group.get('group_name', f'Group {current_group_index + 1}'),
-            'questions_tested': questions_used,
-            'total_questions': len(questions),
-            'answers_tested': answers_used,
-            'total_answers': len(answers)
-        }
+    def set_additional_info_speed(self, wpm: int):
+        """Set additional info streaming speed in words per minute (0 = off)"""
+        self.additional_info_speed = max(0, wpm)
+        status = "disabled" if wpm == 0 else f"set to {wpm} WPM"
+        print(f"📝 Additional info streaming {status}")
     
     # ===== ENHANCED "TELL ME MORE" FUNCTIONALITY =====
     
@@ -800,6 +738,129 @@ class AdvancedChatbot:
     
     # ===== TESTING SYSTEM =====
     
+    def get_current_testing_group(self) -> Optional[Dict]:
+        """Get the current group being tested"""
+        if not self.qa_groups:
+            return None
+        
+        current_index = self.conversation_context['current_group_index']
+        if current_index < len(self.qa_groups):
+            return self.qa_groups[current_index]
+        return None
+    
+    def get_next_question_variant(self) -> Optional[Tuple[str, str]]:
+        """Get the next question variant to test from current group"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return None
+        
+        questions = current_group.get('questions', [])
+        if not questions:
+            return None
+        
+        # Find next unused question
+        for i, question in enumerate(questions):
+            question_id = f"{self.conversation_context['current_group_index']}_{i}"
+            if question_id not in self.conversation_context['used_questions']:
+                self.conversation_context['current_question_index'] = i
+                return question, question_id
+        
+        return None
+    
+    def get_next_answer_variant(self) -> Optional[str]:
+        """Get the next answer variant to test from current group"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return None
+        
+        answers = current_group.get('answers', [])
+        if not answers:
+            return None
+        
+        # Find next unused answer
+        for i, answer in enumerate(answers):
+            answer_id = f"{self.conversation_context['current_group_index']}_{i}"
+            if answer_id not in self.conversation_context['used_answers']:
+                self.conversation_context['current_answer_index'] = i
+                return answer
+        
+        return None
+    
+    def mark_question_used(self, question_id: str):
+        """Mark a question variant as used"""
+        self.conversation_context['used_questions'].add(question_id)
+        self.performance_stats['questions_tested'] += 1
+    
+    def mark_answer_used(self, answer_id: str):
+        """Mark an answer variant as used"""
+        self.conversation_context['used_answers'].add(answer_id)
+        self.performance_stats['answers_tested'] += 1
+    
+    def move_to_next_group(self):
+        """Move to the next group for testing"""
+        current_group = self.get_current_testing_group()
+        if current_group:
+            self.performance_stats['groups_tested'] += 1
+        
+        self.conversation_context['current_group_index'] += 1
+        self.conversation_context['used_questions'] = set()
+        self.conversation_context['used_answers'] = set()
+        self.conversation_context['current_question_index'] = 0
+        self.conversation_context['current_answer_index'] = 0
+    
+    def is_group_completed(self) -> bool:
+        """Check if all variants in current group have been tested"""
+        current_group = self.get_current_testing_group()
+        if not current_group:
+            return True
+        
+        questions = current_group.get('questions', [])
+        answers = current_group.get('answers', [])
+        
+        # Check if all questions and answers have been used
+        all_questions_used = len(self.conversation_context['used_questions']) >= len(questions)
+        all_answers_used = len(self.conversation_context['used_answers']) >= len(answers)
+        
+        return all_questions_used and all_answers_used
+    
+    def is_testing_complete(self) -> bool:
+        """Check if all groups have been tested"""
+        return self.conversation_context['current_group_index'] >= len(self.qa_groups)
+    
+    def get_testing_progress(self) -> Dict:
+        """Get current testing progress"""
+        if not self.qa_groups:
+            return {'complete': True, 'progress': 0.0}
+        
+        total_groups = len(self.qa_groups)
+        current_group_index = self.conversation_context['current_group_index']
+        
+        if current_group_index >= total_groups:
+            return {'complete': True, 'progress': 1.0}
+        
+        current_group = self.qa_groups[current_group_index]
+        questions = current_group.get('questions', [])
+        answers = current_group.get('answers', [])
+        
+        questions_used = len(self.conversation_context['used_questions'])
+        answers_used = len(self.conversation_context['used_answers'])
+        
+        group_progress = (questions_used + answers_used) / (len(questions) + len(answers)) if (questions and answers) else 1.0
+        
+        overall_progress = (current_group_index + min(group_progress, 1.0)) / total_groups
+        
+        return {
+            'complete': False,
+            'progress': overall_progress,
+            'current_group': current_group_index + 1,
+            'total_groups': total_groups,
+            'current_group_name': current_group.get('group_name', f'Group {current_group_index + 1}'),
+            'questions_tested': questions_used,
+            'total_questions': len(questions),
+            'answers_tested': answers_used,
+            'total_answers': len(answers)
+        }
+    
     def run_systematic_test(self):
         """Run systematic test using all question and answer variants"""
         if not self.qa_groups:
@@ -962,6 +1023,8 @@ class AdvancedChatbot:
         print(f"   Follow-up requests: {self.performance_stats['follow_up_requests']}")
         print(f"   Failed matches: {self.performance_stats['failed_matches']}")
         print(f"   Groups in model: {len(self.qa_groups)}")
+        print(f"   Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'})")
+        print(f"   Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'})")
     
     # ===== CHAT INTERFACE =====
     
@@ -973,6 +1036,10 @@ class AdvancedChatbot:
         print(f"\n🤖 {self.current_model} - Enhanced Chatbot with Follow-up Support")
         print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
         print("Type 'reset' to clear conversation context, 'test' to run systematic test")
+        print("Type 'streaming <wpm>' to set main response streaming speed (0 = off)")
+        print("Type 'additional_speed <wpm>' to set additional info streaming speed (0 = off)")
+        print(f"✨ Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'})")
+        print(f"✨ Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'})")
         print("✨ NEW: Try 'tell me more' or 'tell me more about [subject]' for detailed information!")
         print("-" * 60)
         
@@ -997,6 +1064,32 @@ class AdvancedChatbot:
                 
                 elif user_input.lower() == 'test':
                     self.run_systematic_test()
+                    continue
+                
+                elif user_input.lower().startswith('streaming'):
+                    # Handle streaming command for main responses
+                    parts = user_input.split()
+                    if len(parts) == 2:
+                        try:
+                            wpm = int(parts[1])
+                            self.set_streaming_speed(wpm)
+                        except ValueError:
+                            print("❌ Please enter a valid number for WPM")
+                    else:
+                        print("Usage: streaming <wpm> (0 = off)")
+                    continue
+                
+                elif user_input.lower().startswith('additional_speed'):
+                    # Handle streaming command for additional info
+                    parts = user_input.split()
+                    if len(parts) == 2:
+                        try:
+                            wpm = int(parts[1])
+                            self.set_additional_info_speed(wpm)
+                        except ValueError:
+                            print("❌ Please enter a valid number for WPM")
+                    else:
+                        print("Usage: additional_speed <wpm> (0 = off)")
                     continue
                 
                 elif user_input.lower() == 'reset':
@@ -1028,7 +1121,7 @@ class AdvancedChatbot:
                 print(f"🤖 Error: {e}")
     
     def display_responses(self, responses: List[Tuple]):
-        """Simplified response display without streaming"""
+        """Display responses with separate streaming for main response and additional info"""
         for i, (original_question, answer, confidence, corrections, matched_group, match_type) in enumerate(responses, 1):
             print(f"\n--- Question {i} ---")
             print(f"📝 You asked: '{original_question}'")
@@ -1038,7 +1131,8 @@ class AdvancedChatbot:
                 print(f"🔧 Auto-corrected to: '{best_correction}' (confidence: {best_score}%)")
             
             if answer:
-                print(f"🤖 {answer}")
+                # Use main response streaming speed for the main answer
+                self.stream_text(answer, "🤖 ", self.streaming_speed)
                 
                 if matched_group and confidence > 0 and match_type != "follow_up":
                     match_type_display = {
@@ -1051,15 +1145,19 @@ class AdvancedChatbot:
                         "unknown": "❓ Unknown question"
                     }
                     display_type = match_type_display.get(match_type, match_type)
-                    print(f"💡 {display_type} from group '{matched_group}' (confidence: {confidence:.2f})")
+                    
+                    # Use additional info streaming speed for match info
+                    match_info = f"{display_type} from group '{matched_group}' (confidence: {confidence:.2f})"
+                    self.stream_text(match_info, "💡 ", self.additional_info_speed)
                 
                 context_summary = self.get_context_summary()
                 if context_summary:
-                    print(f"🧠 {context_summary}")
+                    # Use additional info streaming speed for context info
+                    self.stream_text(context_summary, "🧠 ", self.additional_info_speed)
             else:
                 print("🤖 I don't know how to answer that yet.")
 
-# Main execution
+# Main execution with configurable options
 def main():
     print("🤖 Edgar AI Engine - Starting...")
     print("=" * 50)
@@ -1069,11 +1167,17 @@ def main():
         print("❌ 'models' folder not found. Please run the training GUI first to create models.")
         return
     
-    # Initialize chatbot - it will automatically prompt for model selection
-    chatbot = AdvancedChatbot()
+    # Configuration options
+    ENABLE_MODEL_SELECTION = False    # Set to False to auto-select first model
+    STREAMING_SPEED = 5000              # Words per minute for main responses (0 = off, try 150-300 for natural speed)
+    ADDITIONAL_INFO_SPEED = 0        # Words per minute for additional info (0 = off)
     
-    # If we have a model loaded, the chat session will start automatically
-    # If no models are available, it will show an error message
+    # Initialize chatbot with configuration
+    chatbot = AdvancedChatbot(
+        enable_model_selection=ENABLE_MODEL_SELECTION,
+        streaming_speed=STREAMING_SPEED,
+        additional_info_speed=ADDITIONAL_INFO_SPEED
+    )
 
 if __name__ == "__main__":
     main()
