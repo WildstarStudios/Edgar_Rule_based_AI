@@ -8,20 +8,18 @@ from vosk import Model, KaldiRecognizer
 # 🔧 CONFIGURATION
 MODEL_PATH = "speech/vosk-model-small-en-us-0.15"
 SAMPLE_RATE = 16000
-BLOCK_SIZE = 2048
+BLOCK_SIZE = 1024
 CHANNELS = 1
 DTYPE = 'int16'
 
 # ⏱ Silence timeouts
-ACTIVE_SILENCE_TIMEOUT = 2.5  # After speech starts
-IDLE_SILENCE_TIMEOUT = 5.0    # After "hey edgar" if no speech follows
+ACTIVE_SILENCE_TIMEOUT = 2.5
+IDLE_SILENCE_TIMEOUT = 3.0
 
 # 🎙️ Load Vosk model
 print("⏳ Loading Vosk model...")
 try:
     model = Model(MODEL_PATH)
-    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
-    recognizer.SetWords(True)
     print("✅ Model loaded successfully!")
 except Exception as e:
     print(f"❌ Failed to load model: {e}")
@@ -40,8 +38,29 @@ def callback(indata, frames, time_info, status):
 listening = False
 last_spoken_time = None
 activated_time = None
+recognizer = None
 
-# 🚀 Start audio stream
+# Create initial recognizer
+def create_recognizer():
+    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+    recognizer.SetWords(True)
+    return recognizer
+
+# Initialize recognizer
+recognizer = create_recognizer()
+
+# 🔥 FASTER DETECTION: Check partial results for wake word
+def check_for_wake_word(text):
+    """Check if text contains wake word with some variations"""
+    text_lower = text.lower()
+    wake_phrases = [
+        "hey edgar",
+        "hey edger",
+        "hey edgar,",
+        "hey edger,",
+    ]
+    return any(phrase in text_lower for phrase in wake_phrases)
+
 print("🎤 Say 'hey edgar' to begin...")
 with sd.RawInputStream(samplerate=SAMPLE_RATE,
                        blocksize=BLOCK_SIZE,
@@ -51,27 +70,38 @@ with sd.RawInputStream(samplerate=SAMPLE_RATE,
     try:
         while True:
             data = audio_queue.get()
+            
+            # Process both final and partial results
             if recognizer.AcceptWaveform(data):
                 result = json.loads(recognizer.Result())
                 text = result.get("text", "").lower()
-
-                if not listening and "hey edgar" in text:
-                    listening = True
-                    activated_time = time.time()
-                    last_spoken_time = None
-                    print("\n👂 Listening activated...")
-
-                elif listening and text:
-                    print(f"\r✅ {text}")
-                    last_spoken_time = time.time()
-
+                
+                if listening and text:
+                    # Don't print if it's just the wake word again
+                    if not check_for_wake_word(text):
+                        print(f"\r✅ {text}")
+                        last_spoken_time = time.time()
+                    
             else:
                 partial = json.loads(recognizer.PartialResult())
                 partial_text = partial.get("partial", "").lower()
-
-                if listening and partial_text:
-                    print(f"\r📝 {partial_text}", end="")
+                
+                # 🔥 Check partial results for faster wake word detection
+                if not listening and partial_text and check_for_wake_word(partial_text):
+                    listening = True
+                    activated_time = time.time()
                     last_spoken_time = time.time()
+                    
+                    # 🔄 CRITICAL: Reset the recognizer to clear the buffer
+                    recognizer = create_recognizer()
+                    
+                    print("\n👂 Listening activated...")
+                    
+                elif listening and partial_text:
+                    # Only print if it's not the wake word
+                    if not check_for_wake_word(partial_text):
+                        print(f"\r📝 {partial_text}", end="")
+                        last_spoken_time = time.time()
 
             # ⏱ Silence handling
             now = time.time()
@@ -88,5 +118,6 @@ with sd.RawInputStream(samplerate=SAMPLE_RATE,
                     listening = False
                     activated_time = None
                     print("\n🎤 Say 'hey edgar' to begin...")
+                    
     except KeyboardInterrupt:
         print("\n🛑 Program terminated.")
