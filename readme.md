@@ -4,3 +4,6 @@ older models will be free but newer ones may not be available for free for testi
 though this doesnt stop you from training your own models using this code or current free models.
 
 currently working on the ui and training system.
+
+
+after iniitial code is finished it may not need much more code after. only updates to improve matching systems.
