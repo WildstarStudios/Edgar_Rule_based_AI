@@ -64,9 +64,9 @@ class AdvancedChatbot:
         self.enable_model_selection = kwargs.get('enable_model_selection', 
                                                self.config.getboolean('ai_engine', 'enable_model_selection', fallback=True))
         self.streaming_speed = kwargs.get('streaming_speed', 
-                                        self.config.getint('ai_engine', 'streaming_speed', fallback=0))
+                                        self.config.getint('ai_engine', 'streaming_speed', fallback=300))
         self.additional_info_speed = kwargs.get('additional_info_speed', 
-                                              self.config.getint('ai_engine', 'additional_info_speed', fallback=0))
+                                              self.config.getint('ai_engine', 'additional_info_speed', fallback=150))
         self.run_tests_at_startup = kwargs.get('run_tests_at_startup', 
                                              self.config.getboolean('ai_engine', 'run_tests_at_startup', fallback=False))
         self.letter_streaming = kwargs.get('letter_streaming', 
@@ -157,7 +157,8 @@ class AdvancedChatbot:
                 print("🧪 STARTUP TESTING COMPLETE - Starting chat session...")
                 print("="*60)
             
-            if self.auto_start_chat:
+            # Force start chat when running independently
+            if self.auto_start_chat or __name__ == "__main__":
                 self.chat()
         else:
             print("❌ No models available. Please create a model first using the training GUI.")
@@ -166,21 +167,15 @@ class AdvancedChatbot:
         """Load configuration from file"""
         config = configparser.ConfigParser()
         
-        # Default configuration
+        # Default configuration - FORCE chat to start when running independently
         defaults = {
             'ai_engine': {
                 'enable_model_selection': 'False',
                 'streaming_speed': '300',
                 'additional_info_speed': '150',
                 'run_tests_at_startup': 'False',
-                'letter_streaming': 'True',
-                'auto_start_chat': 'False'
-            },
-            'gui': {
-                'theme': 'dark',
-                'window_width': '1000',
-                'window_height': '700',
-                'streaming_enabled': 'True'
+                'letter_streaming': 'False',
+                'auto_start_chat': 'True'  # Force True for independent use
             }
         }
         
@@ -1325,7 +1320,8 @@ def main():
         return
     
     # Initialize chatbot with configuration from config file
-    chatbot = AdvancedChatbot()
+    # Force auto_start_chat to True when running independently
+    chatbot = AdvancedChatbot(auto_start_chat=True)
 
 if __name__ == "__main__":
     main()

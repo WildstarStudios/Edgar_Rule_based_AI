@@ -1,34 +1,92 @@
-# Python program to translate speech to text and text to speech #
+import queue
+import sounddevice as sd
+import sys
+import json
+import time
+from vosk import Model, KaldiRecognizer
 
-import speech_recognition as sr
-import pyttsx3 
+# 🔧 CONFIGURATION
+MODEL_PATH = "speech/vosk-model-small-en-us-0.15"
+SAMPLE_RATE = 16000
+BLOCK_SIZE = 2048
+CHANNELS = 1
+DTYPE = 'int16'
 
-# Initialize the recognizer 
-r = sr.Recognizer() 
+# ⏱ Silence timeouts
+ACTIVE_SILENCE_TIMEOUT = 2.5  # After speech starts
+IDLE_SILENCE_TIMEOUT = 5.0    # After "hey edgar" if no speech follows
 
-# Function to convert text to speech
-def SpeakText(command):
-    engine = pyttsx3.init()
-    engine.say(command) 
-    engine.runAndWait()
-    
-# Loop infinitely for user to speak
-while True:    
+# 🎙️ Load Vosk model
+print("⏳ Loading Vosk model...")
+try:
+    model = Model(MODEL_PATH)
+    recognizer = KaldiRecognizer(model, SAMPLE_RATE)
+    recognizer.SetWords(True)
+    print("✅ Model loaded successfully!")
+except Exception as e:
+    print(f"❌ Failed to load model: {e}")
+    sys.exit(1)
+
+# 🎧 Audio queue
+audio_queue = queue.Queue()
+
+# 🎤 Callback to capture audio
+def callback(indata, frames, time_info, status):
+    if status:
+        print(f"⚠️ {status}", file=sys.stderr)
+    audio_queue.put(bytes(indata))
+
+# 🧠 State variables
+listening = False
+last_spoken_time = None
+activated_time = None
+
+# 🚀 Start audio stream
+print("🎤 Say 'hey edgar' to begin...")
+with sd.RawInputStream(samplerate=SAMPLE_RATE,
+                       blocksize=BLOCK_SIZE,
+                       dtype=DTYPE,
+                       channels=CHANNELS,
+                       callback=callback):
     try:
-        # Use the microphone as source for input
-        with sr.Microphone() as source2:
-            r.adjust_for_ambient_noise(source2, duration=0.2)
-            audio2 = r.listen(source2)
-            
-            # Using Google to recognize audio
-            MyText = r.recognize_google(audio2)
-            MyText = MyText.lower()
+        while True:
+            data = audio_queue.get()
+            if recognizer.AcceptWaveform(data):
+                result = json.loads(recognizer.Result())
+                text = result.get("text", "").lower()
 
-            print("Did you say:", MyText)
-            SpeakText(MyText)
-            
-    except sr.RequestError as e:
-        print("Could not request results; {0}".format(e))
-        
-    except sr.UnknownValueError:
-        print("Unknown error occurred")
+                if not listening and "hey edgar" in text:
+                    listening = True
+                    activated_time = time.time()
+                    last_spoken_time = None
+                    print("\n👂 Listening activated...")
+
+                elif listening and text:
+                    print(f"\r✅ {text}")
+                    last_spoken_time = time.time()
+
+            else:
+                partial = json.loads(recognizer.PartialResult())
+                partial_text = partial.get("partial", "").lower()
+
+                if listening and partial_text:
+                    print(f"\r📝 {partial_text}", end="")
+                    last_spoken_time = time.time()
+
+            # ⏱ Silence handling
+            now = time.time()
+            if listening:
+                if last_spoken_time:
+                    if now - last_spoken_time > ACTIVE_SILENCE_TIMEOUT:
+                        print(f"\n🛑 No speech detected for {ACTIVE_SILENCE_TIMEOUT} seconds. Listening stopped.")
+                        listening = False
+                        last_spoken_time = None
+                        activated_time = None
+                        print("\n🎤 Say 'hey edgar' to begin...")
+                elif activated_time and now - activated_time > IDLE_SILENCE_TIMEOUT:
+                    print(f"\n🛑 No speech after activation for {IDLE_SILENCE_TIMEOUT} seconds. Listening stopped.")
+                    listening = False
+                    activated_time = None
+                    print("\n🎤 Say 'hey edgar' to begin...")
+    except KeyboardInterrupt:
+        print("\n🛑 Program terminated.")
