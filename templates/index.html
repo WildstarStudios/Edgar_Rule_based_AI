@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Edgar AI Assistant</title>
     <style>
         :root {
@@ -19,6 +19,11 @@
             --text-tertiary: #8080a0;
             --border: #404080;
             --input-bg: #2d2d5a;
+            --hover-primary: #5750d3;
+            --hover-secondary: #35356a;
+            --scrollbar-bg: #1a1a2e;
+            --scrollbar-slider: #6c63ff;
+            --scrollbar-hover: #5750d3;
         }
         
         * {
@@ -33,26 +38,51 @@
             color: var(--text-primary);
             height: 100vh;
             overflow: hidden;
+            -webkit-tap-highlight-color: transparent;
+            -webkit-touch-callout: none;
+            -webkit-user-select: none;
+            user-select: none;
         }
         
         .container {
             display: flex;
             height: 100vh;
+            position: relative;
+        }
+        
+        /* Mobile overlay for sidebar */
+        .mobile-overlay {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.5);
+            z-index: 998;
         }
         
         /* Sidebar */
         .sidebar {
             width: 280px;
             background: var(--bg-secondary);
-            padding: 20px;
             display: flex;
             flex-direction: column;
             border-right: 1px solid var(--border);
+            transition: transform 0.3s ease;
+            z-index: 999;
+            position: relative;
         }
         
-        .logo {
+        .sidebar.collapsed {
+            transform: translateX(-100%);
+        }
+        
+        .sidebar-header {
+            padding: 20px;
             text-align: center;
-            margin-bottom: 30px;
+            border-bottom: 1px solid var(--border);
+            position: relative;
         }
         
         .logo h1 {
@@ -66,8 +96,20 @@
             font-size: 14px;
         }
         
+        .connection-status {
+            margin-top: 10px;
+            padding: 6px 12px;
+            background: var(--bg-tertiary);
+            border-radius: 6px;
+            font-size: 11px;
+            color: var(--accent-success);
+            font-weight: bold;
+        }
+        
         .controls {
             flex: 1;
+            padding: 20px;
+            overflow-y: auto;
         }
         
         .control-btn {
@@ -95,11 +137,34 @@
             background: var(--bg-tertiary);
             border-radius: 8px;
             font-size: 12px;
+            margin: 20px;
         }
         
         .status h3 {
             color: var(--text-secondary);
             margin-bottom: 5px;
+        }
+        
+        /* Desktop sidebar toggle */
+        .sidebar-toggle {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            z-index: 1000;
+            background: var(--accent-primary);
+            border: none;
+            border-radius: 6px;
+            padding: 8px 12px;
+            color: var(--text-primary);
+            cursor: pointer;
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .sidebar-toggle .toggle-text {
+            font-size: 12px;
         }
         
         /* Main Content */
@@ -108,6 +173,12 @@
             display: flex;
             flex-direction: column;
             padding: 20px;
+            transition: margin-left 0.3s ease;
+            position: relative;
+        }
+        
+        .main-content.expanded {
+            margin-left: 0;
         }
         
         .chat-header {
@@ -117,6 +188,15 @@
             margin-bottom: 20px;
             padding-bottom: 15px;
             border-bottom: 1px solid var(--border);
+            position: relative;
+            min-height: 60px;
+        }
+        
+        .header-content {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            margin-left: 50px; /* Space for desktop toggle button */
         }
         
         .model-info {
@@ -132,6 +212,9 @@
             border-radius: 6px;
             padding: 8px 12px;
             font-size: 14px;
+            min-width: 200px;
+            z-index: 10;
+            position: relative;
         }
         
         .streaming-indicator {
@@ -167,6 +250,25 @@
             margin-bottom: 20px;
             display: flex;
             flex-direction: column;
+        }
+        
+        /* Custom scrollbar for chat display */
+        .chat-display::-webkit-scrollbar {
+            width: 6px;
+        }
+        
+        .chat-display::-webkit-scrollbar-track {
+            background: var(--scrollbar-bg);
+            border-radius: 3px;
+        }
+        
+        .chat-display::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-slider);
+            border-radius: 3px;
+        }
+        
+        .chat-display::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-hover);
         }
         
         .message {
@@ -268,6 +370,30 @@
             30% { transform: translateY(-4px); }
         }
         
+        /* Quick Actions - MOVED TO TOP */
+        .quick-actions {
+            display: flex;
+            gap: 8px;
+            margin-bottom: 10px; /* Now above input */
+            flex-wrap: wrap;
+        }
+        
+        .quick-btn {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
+            border: none;
+            border-radius: 16px;
+            padding: 6px 12px;
+            font-size: 11px;
+            cursor: pointer;
+            transition: background 0.3s ease;
+            -webkit-appearance: none;
+        }
+        
+        .quick-btn:hover {
+            background: var(--accent-primary);
+        }
+        
         /* Input Area */
         .input-area {
             display: flex;
@@ -287,12 +413,15 @@
             border: 1px solid var(--border);
             border-radius: 12px;
             padding: 12px 15px;
-            font-size: 14px;
+            font-size: 16px;
             resize: none;
-            min-height: 50px;
+            min-height: 50px; /* Single line height */
             max-height: 120px;
             font-family: inherit;
             line-height: 1.4;
+            -webkit-appearance: none;
+            -webkit-border-radius: 12px;
+            overflow: hidden;
         }
         
         .user-input:focus {
@@ -300,32 +429,10 @@
             border-color: var(--accent-primary);
         }
         
-        /* Auto-resize textarea */
-        .auto-resize {
-            overflow: hidden;
-            transition: height 0.2s;
-        }
-        
-        .quick-actions {
-            display: flex;
-            gap: 8px;
-            margin-top: 10px;
-            flex-wrap: wrap;
-        }
-        
-        .quick-btn {
-            background: var(--bg-tertiary);
-            color: var(--text-primary);
-            border: none;
-            border-radius: 16px;
-            padding: 6px 12px;
-            font-size: 11px;
-            cursor: pointer;
-            transition: background 0.3s ease;
-        }
-        
-        .quick-btn:hover {
-            background: var(--accent-primary);
+        /* Single line input by default */
+        .user-input.single-line {
+            height: 50px;
+            overflow-y: hidden;
         }
         
         .send-btn {
@@ -340,6 +447,7 @@
             transition: background 0.3s ease;
             height: 50px;
             min-width: 80px;
+            -webkit-appearance: none;
         }
         
         .send-btn:hover:not(:disabled) {
@@ -351,39 +459,262 @@
             cursor: not-allowed;
         }
         
-        /* Scrollbar */
-        ::-webkit-scrollbar {
-            width: 8px;
+        /* Mobile Styles */
+        @media screen and (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                position: fixed;
+                top: 0;
+                left: 0;
+                height: 100%;
+                transform: translateX(-100%);
+                width: 280px;
+            }
+            
+            .sidebar.open {
+                transform: translateX(0);
+            }
+            
+            .sidebar-toggle {
+                display: block;
+                position: fixed;
+                top: 15px;
+                left: 15px;
+                z-index: 1000;
+            }
+            
+            .main-content {
+                padding: 10px;
+                margin-left: 0 !important;
+            }
+            
+            .chat-header {
+                padding-top: 50px;
+                flex-direction: column;
+                gap: 10px;
+                align-items: flex-start;
+            }
+            
+            .header-content {
+                margin-left: 0;
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                width: 100%;
+            }
+            
+            .model-info {
+                flex-direction: column;
+                align-items: flex-start;
+                gap: 10px;
+                width: 100%;
+            }
+            
+            .model-select {
+                min-width: 100%;
+                width: 100%;
+            }
+            
+            .chat-display {
+                padding: 15px;
+                margin-bottom: 15px;
+            }
+            
+            .message {
+                max-width: 90%;
+                padding: 10px 12px;
+            }
+            
+            .input-area {
+                gap: 8px;
+            }
+            
+            .user-input {
+                font-size: 16px;
+                min-height: 44px;
+                padding: 12px;
+            }
+            
+            .send-btn {
+                height: 44px;
+                min-width: 70px;
+                padding: 10px 15px;
+            }
+            
+            .quick-actions {
+                gap: 6px;
+            }
+            
+            .quick-btn {
+                padding: 5px 10px;
+                font-size: 10px;
+            }
+            
+            .mobile-overlay.active {
+                display: block;
+            }
+            
+            /* Hide desktop toggle text on mobile */
+            .sidebar-toggle .toggle-text {
+                display: none;
+            }
         }
         
-        ::-webkit-scrollbar-track {
+        /* Desktop-specific styles */
+        @media screen and (min-width: 769px) {
+            .sidebar-toggle {
+                display: flex !important;
+            }
+            
+            .sidebar.collapsed-desktop {
+                transform: translateX(-100%);
+            }
+            
+            .main-content.expanded-desktop {
+                margin-left: 0;
+            }
+            
+            .sidebar:not(.collapsed-desktop) + .main-content {
+                margin-left: 0;
+            }
+        }
+        
+        /* Small mobile devices */
+        @media screen and (max-width: 480px) {
+            .main-content {
+                padding: 5px;
+            }
+            
+            .chat-display {
+                padding: 10px;
+                margin-bottom: 10px;
+            }
+            
+            .message {
+                max-width: 95%;
+            }
+            
+            .system-message, .error-message {
+                max-width: 95%;
+                padding: 8px 12px;
+            }
+            
+            .input-area {
+                gap: 5px;
+            }
+            
+            .quick-actions {
+                justify-content: center;
+            }
+        }
+        
+        /* Scrollbar for controls */
+        .controls::-webkit-scrollbar {
+            width: 4px;
+        }
+        
+        .controls::-webkit-scrollbar-track {
+            background: var(--scrollbar-bg);
+        }
+        
+        .controls::-webkit-scrollbar-thumb {
+            background: var(--scrollbar-slider);
+            border-radius: 2px;
+        }
+        
+        .controls::-webkit-scrollbar-thumb:hover {
+            background: var(--scrollbar-hover);
+        }
+        
+        /* Custom modal to prevent browser dialogs from interfering */
+        .custom-modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.7);
+            z-index: 10000;
+            align-items: center;
+            justify-content: center;
+        }
+        
+        .custom-modal-content {
             background: var(--bg-secondary);
+            padding: 20px;
+            border-radius: 12px;
+            max-width: 90%;
+            max-height: 80%;
+            overflow-y: auto;
+            color: var(--text-primary);
+            text-align: center;
         }
         
-        ::-webkit-scrollbar-thumb {
+        .custom-modal-buttons {
+            margin-top: 20px;
+            display: flex;
+            gap: 10px;
+            justify-content: center;
+        }
+        
+        .custom-modal-btn {
+            padding: 8px 16px;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .custom-modal-btn.primary {
             background: var(--accent-primary);
-            border-radius: 4px;
+            color: var(--text-primary);
         }
         
-        ::-webkit-scrollbar-thumb:hover {
-            background: var(--hover-primary);
+        .custom-modal-btn.secondary {
+            background: var(--bg-tertiary);
+            color: var(--text-primary);
         }
     </style>
 </head>
 <body>
+    <!-- Custom Modal for alerts/confirms -->
+    <div class="custom-modal" id="custom-modal">
+        <div class="custom-modal-content">
+            <div id="custom-modal-message"></div>
+            <div class="custom-modal-buttons" id="custom-modal-buttons"></div>
+        </div>
+    </div>
+
+    <!-- Mobile Sidebar Toggle -->
+    <button class="sidebar-toggle" id="sidebar-toggle">
+        <span class="toggle-icon">☰</span>
+        <span class="toggle-text">Menu</span>
+    </button>
+    
+    <!-- Mobile Overlay -->
+    <div class="mobile-overlay" id="mobile-overlay"></div>
+    
     <div class="container">
         <!-- Sidebar -->
-        <div class="sidebar">
-            <div class="logo">
-                <h1>Edgar AI</h1>
-                <p>Your Personal Assistant</p>
+        <div class="sidebar" id="sidebar">
+            <div class="sidebar-header">
+                <div class="logo">
+                    <h1>🤖 Edgar AI</h1>
+                    <p>Your Personal Assistant</p>
+                </div>
+                <div class="connection-status" id="connection-status">● ONLINE MODE</div>
             </div>
             
             <div class="controls">
-                <button class="control-btn" onclick="showContext()">Show Context</button>
-                <button class="control-btn" onclick="showStats()">Statistics</button>
-                <button class="control-btn" onclick="resetChat()">Reset Chat</button>
-                <button class="control-btn" onclick="showHelp()">Help</button>
+                <button class="control-btn" onclick="showContext()">🧠 Context</button>
+                <button class="control-btn" onclick="showStats()">📊 Statistics</button>
+                <button class="control-btn" onclick="resetChat()">🔄 New Chat</button>
+                <button class="control-btn" onclick="showHelp()">❓ Help</button>
+                <button class="control-btn" onclick="showSettings()">⚙️ Settings</button>
             </div>
             
             <div class="status">
@@ -398,15 +729,20 @@
         </div>
         
         <!-- Main Content -->
-        <div class="main-content">
+        <div class="main-content" id="main-content">
             <div class="chat-header">
-                <div class="model-info">
-                    <h2>Chat Interface</h2>
-                    <select id="model-select" class="model-select" onchange="switchModel()">
-                        <option value="">Loading models...</option>
-                    </select>
+                <div class="header-content">
+                    <div class="model-info">
+                        <h2>Chat Interface</h2>
+                        <select id="model-select" class="model-select" onchange="switchModel()">
+                            <option value="">Loading models...</option>
+                        </select>
+                    </div>
+                    <div class="streaming-indicator" id="header-streaming-indicator" style="display: none;">
+                        <div class="streaming-dot"></div>
+                        <span>Streaming response...</span>
+                    </div>
                 </div>
-                <div id="connection-status" style="color: var(--accent-success);">Connected</div>
             </div>
             
             <!-- Chat Display -->
@@ -417,23 +753,25 @@
                 </div>
             </div>
             
+            <!-- Quick Actions - MOVED ABOVE INPUT -->
+            <div class="quick-actions">
+                <button class="quick-btn" onclick="quickAction('tell me more')">Tell me more</button>
+                <button class="quick-btn" onclick="quickAction('what is Python?')">About Python</button>
+                <button class="quick-btn" onclick="quickAction('explain AI')">Explain AI</button>
+                <button class="quick-btn" onclick="quickAction('help')">Help</button>
+            </div>
+            
             <!-- Input Area -->
             <div class="input-area">
                 <div class="input-container">
                     <textarea 
                         id="user-input" 
-                        class="user-input auto-resize" 
+                        class="user-input single-line" 
                         placeholder="Type your message here... (Press Enter to send, Shift+Enter for new line)"
                         onkeydown="handleKeydown(event)"
                         oninput="autoResize(this)"
+                        rows="1"
                     ></textarea>
-                    
-                    <div class="quick-actions">
-                        <button class="quick-btn" onclick="quickAction('tell me more')">Tell me more</button>
-                        <button class="quick-btn" onclick="quickAction('what is Python?')">About Python</button>
-                        <button class="quick-btn" onclick="quickAction('explain AI')">Explain AI</button>
-                        <button class="quick-btn" onclick="quickAction('help')">Help</button>
-                    </div>
                 </div>
                 
                 <button id="send-btn" class="send-btn" onclick="sendMessage()">
@@ -448,20 +786,162 @@
         let currentBotMessage = null;
         let eventSource = null;
         let isStreaming = false;
+        let isMobile = window.innerWidth <= 768;
+        let sidebarCollapsed = false;
         
         // Initialize the interface
         document.addEventListener('DOMContentLoaded', function() {
             loadModels();
             updateContextInfo();
+            setupMobileHandlers();
+            setupDesktopToggle();
             
             // Update context info every 30 seconds
             setInterval(updateContextInfo, 30000);
+            
+            // Check for mobile on resize
+            window.addEventListener('resize', function() {
+                isMobile = window.innerWidth <= 768;
+                if (!isMobile) {
+                    closeSidebar();
+                }
+            });
+            
+            // Initialize input as single line
+            const input = document.getElementById('user-input');
+            input.classList.add('single-line');
         });
         
-        // Auto-resize textarea
+        // Desktop sidebar toggle
+        function setupDesktopToggle() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebar = document.getElementById('sidebar');
+            const mainContent = document.getElementById('main-content');
+            
+            sidebarToggle.addEventListener('click', function() {
+                if (isMobile) {
+                    toggleSidebar();
+                } else {
+                    // Desktop toggle
+                    sidebarCollapsed = !sidebarCollapsed;
+                    if (sidebarCollapsed) {
+                        sidebar.classList.add('collapsed-desktop');
+                        mainContent.classList.add('expanded-desktop');
+                    } else {
+                        sidebar.classList.remove('collapsed-desktop');
+                        mainContent.classList.remove('expanded-desktop');
+                    }
+                }
+            });
+        }
+        
+        // Mobile sidebar handlers
+        function setupMobileHandlers() {
+            const sidebarToggle = document.getElementById('sidebar-toggle');
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            const mainContent = document.getElementById('main-content');
+            
+            overlay.addEventListener('click', closeSidebar);
+            
+            // Close sidebar when clicking on a control button on mobile
+            document.querySelectorAll('.control-btn').forEach(btn => {
+                btn.addEventListener('click', function() {
+                    if (isMobile) {
+                        closeSidebar();
+                    }
+                });
+            });
+        }
+        
+        function toggleSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            const mainContent = document.getElementById('main-content');
+            
+            sidebar.classList.toggle('open');
+            overlay.classList.toggle('active');
+            mainContent.classList.toggle('expanded');
+        }
+        
+        function closeSidebar() {
+            const sidebar = document.getElementById('sidebar');
+            const overlay = document.getElementById('mobile-overlay');
+            const mainContent = document.getElementById('main-content');
+            
+            sidebar.classList.remove('open');
+            overlay.classList.remove('active');
+            mainContent.classList.remove('expanded');
+        }
+        
+        // Auto-resize textarea with mobile fix
         function autoResize(textarea) {
+            // Reset height to auto to get the correct scrollHeight
             textarea.style.height = 'auto';
-            textarea.style.height = Math.min(textarea.scrollHeight, 120) + 'px';
+            
+            // Calculate new height
+            const newHeight = Math.min(textarea.scrollHeight, 120);
+            textarea.style.height = newHeight + 'px';
+            
+            // Add or remove single-line class based on content
+            if (textarea.value.includes('\n') || textarea.scrollHeight > 50) {
+                textarea.classList.remove('single-line');
+            } else {
+                textarea.classList.add('single-line');
+            }
+            
+            // Prevent zoom on iOS
+            if (isMobile) {
+                textarea.style.fontSize = '16px';
+            }
+        }
+        
+        // Custom alert function to prevent browser dialogs from interfering
+        function customAlert(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('custom-modal');
+                const messageEl = document.getElementById('custom-modal-message');
+                const buttonsEl = document.getElementById('custom-modal-buttons');
+                
+                messageEl.textContent = message;
+                buttonsEl.innerHTML = '<button class="custom-modal-btn primary" onclick="closeCustomModal()">OK</button>';
+                
+                modal.style.display = 'flex';
+                
+                // Store resolve function to call when modal closes
+                modal._resolve = resolve;
+            });
+        }
+        
+        // Custom confirm function
+        function customConfirm(message) {
+            return new Promise((resolve) => {
+                const modal = document.getElementById('custom-modal');
+                const messageEl = document.getElementById('custom-modal-message');
+                const buttonsEl = document.getElementById('custom-modal-buttons');
+                
+                messageEl.textContent = message;
+                buttonsEl.innerHTML = `
+                    <button class="custom-modal-btn primary" onclick="closeCustomModal(true)">OK</button>
+                    <button class="custom-modal-btn secondary" onclick="closeCustomModal(false)">Cancel</button>
+                `;
+                
+                modal.style.display = 'flex';
+                
+                // Store resolve function to call when modal closes
+                modal._resolve = resolve;
+            });
+        }
+        
+        // Close custom modal
+        function closeCustomModal(result = true) {
+            const modal = document.getElementById('custom-modal');
+            modal.style.display = 'none';
+            
+            if (modal._resolve) {
+                modal._resolve(result);
+                modal._resolve = null;
+            }
         }
         
         // Load available models
@@ -547,6 +1027,12 @@
             addUserMessage(message);
             input.value = '';
             input.style.height = 'auto'; // Reset height
+            input.classList.add('single-line');
+            
+            // Close sidebar on mobile after sending
+            if (isMobile) {
+                closeSidebar();
+            }
             
             try {
                 const response = await fetch('/api/chat', {
@@ -594,6 +1080,7 @@
         function startStreaming() {
             isStreaming = true;
             document.getElementById('streaming-indicator').style.display = 'flex';
+            document.getElementById('header-streaming-indicator').style.display = 'flex';
             
             // Create new bot message
             currentBotMessage = createBotMessage();
@@ -643,6 +1130,7 @@
         function endStreaming() {
             isStreaming = false;
             document.getElementById('streaming-indicator').style.display = 'none';
+            document.getElementById('header-streaming-indicator').style.display = 'none';
             
             if (eventSource) {
                 eventSource.close();
@@ -806,10 +1294,10 @@
                 }
                 contextInfo += `• Conversation length: ${data.conversation_length} messages`;
                 
-                alert(contextInfo);
+                await customAlert(contextInfo);
             } catch (error) {
                 console.error('Error getting context:', error);
-                alert('Error getting context information');
+                customAlert('Error getting context information');
             }
         }
         
@@ -828,16 +1316,17 @@
                 statsInfo += `• Context assists: ${data.context_helps}\n`;
                 statsInfo += `• Streaming: ${data.streaming_speed > 0 ? 'Enabled (' + data.streaming_speed + ' WPM)' : 'Disabled'}`;
                 
-                alert(statsInfo);
+                await customAlert(statsInfo);
             } catch (error) {
                 console.error('Error getting stats:', error);
-                alert('Error getting statistics');
+                customAlert('Error getting statistics');
             }
         }
         
         // Reset chat
         async function resetChat() {
-            if (confirm('Start a new conversation? Current context will be cleared.')) {
+            const result = await customConfirm('Start a new conversation? Current context will be cleared.');
+            if (result) {
                 try {
                     const response = await fetch('/api/reset');
                     const data = await response.json();
@@ -855,9 +1344,29 @@
                     }
                 } catch (error) {
                     console.error('Error resetting chat:', error);
-                    alert('Error resetting conversation');
+                    customAlert('Error resetting conversation');
                 }
             }
+        }
+        
+        // Show settings
+        function showSettings() {
+            const settingsText = `Edgar AI Settings
+
+Connection:
+• Mode: Online (Web Server)
+• Server: http://localhost:5000
+
+To change settings, use the desktop application.
+
+Current Features:
+• Real-time text streaming
+• Context-aware conversations
+• Multiple model support
+• Mobile-responsive design
+• Collapsible sidebar`;
+
+            customAlert(settingsText);
         }
         
         // Show help
@@ -876,14 +1385,16 @@ Features:
 • Real-time text streaming
 • Conversation statistics
 • Multiple model support
+• Mobile-friendly interface
 
 Tips:
 • Use the quick action buttons for common questions
 • The assistant maintains context across messages
 • Press Enter to send messages quickly
-• Streaming settings are configured in config.cfg`;
+• On mobile, use the menu button to access controls
+• Sidebar can be collapsed/expanded on desktop and mobile`;
 
-            alert(helpText);
+            customAlert(helpText);
         }
         
         // Utility functions
@@ -898,13 +1409,13 @@ Tips:
         
         function getMatchTypeDisplay(matchType) {
             const types = {
-                'exact': 'Exact match',
-                'high_confidence': 'High confidence',
-                'medium_confidence': 'Medium confidence', 
-                'low_confidence': 'Low confidence',
-                'semantic': 'Semantic match',
+                'exact': '🎯 Exact match',
+                'high_confidence': '✅ High confidence',
+                'medium_confidence': '⚠️ Medium confidence', 
+                'low_confidence': '🔍 Low confidence',
+                'semantic': '🧠 Semantic match',
                 'follow_up': 'Follow-up information',
-                'unknown': 'Unknown question'
+                'unknown': '❓ Unknown question'
             };
             return types[matchType] || matchType;
         }
