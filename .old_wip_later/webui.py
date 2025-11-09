@@ -369,11 +369,6 @@ def health_check():
     }
     return jsonify(status)
 
-def create_html_template():
-    """Create the HTML template with improved text box sizing"""
-    # ... (keep the same HTML template content as before)
-    # The HTML template remains exactly the same
-
 if __name__ == '__main__':
     # Initialize chatbot
     print("🤖 Initializing Edgar AI Chatbot...")

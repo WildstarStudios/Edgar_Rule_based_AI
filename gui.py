@@ -7,6 +7,8 @@ import os
 import configparser
 import requests
 import json
+import re
+from urllib.parse import urlparse
 
 # Add the directory containing ai_engine.py to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -395,9 +397,17 @@ class MiniChatWindow:
             self.mini_window.after(0, self.mini_processing_complete)
     
     def process_mini_message_online(self, user_text):
-        """Process message in online mode using web server"""
+        """Process message in online mode using web server with connection checking"""
+        # Use parent's connection verification
+        if not self.parent.connection_verified:
+            self.mini_window.after(0, lambda: self.add_mini_message("error", 
+                "❌ Server connection not verified.\n"
+                "Please check connection in main window."))
+            self.mini_window.after(0, self.mini_processing_complete)
+            return
+        
         try:
-            self.mini_window.after(0, lambda: self.add_mini_message("thinking", "🤔 Connecting to server..."))
+            self.mini_window.after(0, lambda: self.add_mini_message("thinking", "🔄 Connecting to server..."))
             
             # Send request to web server
             response = requests.post(f"{self.server_url}/api/chat", 
@@ -410,17 +420,23 @@ class MiniChatWindow:
                     # Start streaming from server
                     self.mini_window.after(0, lambda: self.start_mini_streaming())
                 else:
-                    self.mini_window.after(0, lambda: self.add_mini_message("error", f"Server error: {data.get('error', 'Unknown error')}"))
+                    self.mini_window.after(0, lambda: self.add_mini_message("error", 
+                        f"Server error: {data.get('error', 'Unknown error')}"))
                     self.mini_window.after(0, self.mini_processing_complete)
             else:
-                self.mini_window.after(0, lambda: self.add_mini_message("error", f"Server connection failed: {response.status_code}"))
+                self.mini_window.after(0, lambda: self.add_mini_message("error", 
+                    f"Server connection failed: {response.status_code}"))
+                self.parent.connection_verified = False
                 self.mini_window.after(0, self.mini_processing_complete)
                 
         except requests.exceptions.RequestException as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", f"Connection error: {str(e)}"))
+            self.mini_window.after(0, lambda: self.add_mini_message("error", 
+                f"Connection error: {str(e)}"))
+            self.parent.connection_verified = False
             self.mini_window.after(0, self.mini_processing_complete)
         except Exception as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", f"An error occurred: {str(e)}"))
+            self.mini_window.after(0, lambda: self.add_mini_message("error", 
+                f"An error occurred: {str(e)}"))
             self.mini_window.after(0, self.mini_processing_complete)
     
     def start_mini_streaming(self):
@@ -670,6 +686,13 @@ class DarkChatbotGUI:
         self.mode = self.config.get('connection', 'mode', fallback='offline')
         self.server_url = self.config.get('connection', 'server_url', fallback='http://localhost:5000')
         
+        # Validate and normalize server URL
+        self.server_url = self.normalize_server_url(self.server_url)
+        
+        # Connection status tracking
+        self.connection_verified = False
+        self.last_connection_test = None
+        
         # Initialize chatbot (for offline mode)
         self.chatbot = None
         if self.mode == 'offline':
@@ -689,6 +712,262 @@ class DarkChatbotGUI:
         # Update status based on mode
         self.update_connection_status()
     
+    def normalize_server_url(self, url):
+        """Normalize and validate server URL"""
+        if not url:
+            return "http://localhost:5000"
+        
+        # Add http:// if no protocol specified
+        if not url.startswith(('http://', 'https://')):
+            url = 'http://' + url
+        
+        # Remove trailing slashes
+        url = url.rstrip('/')
+        
+        return url
+
+    def validate_server_url(self, url):
+        """Validate server URL format"""
+        try:
+            parsed = urlparse(url)
+            if not parsed.netloc:
+                return False, "Invalid URL format"
+            
+            # Check if it's an IP address or hostname
+            if parsed.hostname:
+                # Basic IP validation (simple check)
+                ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
+                if re.match(ip_pattern, parsed.hostname):
+                    # Validate IP octets
+                    octets = parsed.hostname.split('.')
+                    for octet in octets:
+                        if not 0 <= int(octet) <= 255:
+                            return False, "Invalid IP address"
+                
+                return True, "URL format is valid"
+            
+            return False, "Invalid hostname"
+        except Exception as e:
+            return False, f"URL validation error: {str(e)}"
+
+    def test_connection_advanced(self, url=None, show_result=True):
+        """Test connection with detailed feedback and animation"""
+        if url is None:
+            url = self.server_url
+        
+        # Normalize the URL first
+        url = self.normalize_server_url(url)
+        
+        # Validate URL format
+        is_valid, validation_msg = self.validate_server_url(url)
+        if not is_valid:
+            if show_result:
+                messagebox.showerror("Connection Test", f"❌ Invalid URL:\n{validation_msg}")
+            return False
+        
+        # Start connection animation
+        if show_result:
+            self.start_connection_animation(url)
+        
+        def connection_test():
+            try:
+                # Test basic connectivity
+                start_time = time.time()
+                response = requests.get(f"{url}/health", timeout=5)
+                end_time = time.time()
+                response_time = int((end_time - start_time) * 1000)
+                
+                if response.status_code == 200:
+                    data = response.json()
+                    server_status = data.get('status', 'unknown')
+                    server_version = data.get('version', 'unknown')
+                    
+                    # Test chat endpoint
+                    chat_response = requests.post(f"{url}/api/chat", 
+                                                json={"message": "test"},
+                                                timeout=5)
+                    chat_ok = chat_response.status_code == 200
+                    
+                    # Test streaming endpoint
+                    stream_response = requests.get(f"{url}/api/stream", 
+                                                 timeout=5, 
+                                                 stream=False)
+                    stream_ok = stream_response.status_code == 200
+                    
+                    result = {
+                        'success': True,
+                        'url': url,
+                        'response_time': response_time,
+                        'server_status': server_status,
+                        'server_version': server_version,
+                        'chat_endpoint': chat_ok,
+                        'stream_endpoint': stream_ok,
+                        'message': f"✅ Connection successful!\n\n"
+                                 f"• Server: {url}\n"
+                                 f"• Response time: {response_time}ms\n"
+                                 f"• Status: {server_status}\n"
+                                 f"• Version: {server_version}\n"
+                                 f"• Chat API: {'✅' if chat_ok else '❌'}\n"
+                                 f"• Stream API: {'✅' if stream_ok else '❌'}"
+                    }
+                    
+                else:
+                    result = {
+                        'success': False,
+                        'url': url,
+                        'message': f"❌ Server returned status {response.status_code}\n\n"
+                                 f"URL: {url}\n"
+                                 f"Response: {response.text if response.text else 'No response body'}"
+                    }
+                    
+            except requests.exceptions.ConnectTimeout:
+                result = {
+                    'success': False,
+                    'url': url,
+                    'message': f"❌ Connection timeout\n\n"
+                             f"URL: {url}\n"
+                             f"The server didn't respond within 5 seconds."
+                }
+            except requests.exceptions.ConnectionError:
+                result = {
+                    'success': False,
+                    'url': url,
+                    'message': f"❌ Connection refused\n\n"
+                             f"URL: {url}\n"
+                             f"• Check if the server is running\n"
+                             f"• Verify the IP/port is correct\n"
+                             f"• Check firewall settings"
+                }
+            except requests.exceptions.RequestException as e:
+                result = {
+                    'success': False,
+                    'url': url,
+                    'message': f"❌ Network error\n\n"
+                             f"URL: {url}\n"
+                             f"Error: {str(e)}"
+                }
+            except Exception as e:
+                result = {
+                    'success': False,
+                    'url': url,
+                    'message': f"❌ Unexpected error\n\n"
+                             f"URL: {url}\n"
+                             f"Error: {str(e)}"
+                }
+            
+            # Update UI in main thread
+            if show_result:
+                self.root.after(0, lambda: self.stop_connection_animation(result))
+            else:
+                # Silent test for initialization
+                if result['success']:
+                    self.connection_verified = True
+                    self.last_connection_test = time.time()
+        
+        # Run connection test in thread
+        threading.Thread(target=connection_test, daemon=True).start()
+    
+    def start_connection_animation(self, url):
+        """Show connection animation"""
+        self.connection_window = tk.Toplevel(self.root)
+        self.connection_window.title("Testing Connection")
+        self.connection_window.geometry("400x200")
+        self.connection_window.configure(bg=self.colors['bg_primary'])
+        self.connection_window.resizable(False, False)
+        self.connection_window.transient(self.root)
+        self.connection_window.grab_set()
+        
+        # Center the window
+        self.connection_window.update_idletasks()
+        x = (self.root.winfo_screenwidth() // 2) - (self.connection_window.winfo_width() // 2)
+        y = (self.root.winfo_screenheight() // 2) - (self.connection_window.winfo_height() // 2)
+        self.connection_window.geometry(f"+{x}+{y}")
+        
+        # Main container
+        main_frame = tk.Frame(self.connection_window, bg=self.colors['bg_primary'], padx=20, pady=20)
+        main_frame.pack(fill=tk.BOTH, expand=True)
+        
+        # Animation frames
+        self.animation_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
+        self.animation_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        # Spinning animation
+        self.animation_index = 0
+        self.animation_frames = ["⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿"]
+        self.animation_label = tk.Label(
+            self.animation_frame, 
+            text=self.animation_frames[0],
+            font=('Arial', 24),
+            bg=self.colors['bg_primary'],
+            fg=self.colors['accent_secondary']
+        )
+        self.animation_label.pack()
+        
+        # Status text
+        self.status_label = tk.Label(
+            main_frame,
+            text=f"Connecting to:\n{url}",
+            font=('Arial', 10),
+            bg=self.colors['bg_primary'],
+            fg=self.colors['text_secondary'],
+            justify=tk.CENTER
+        )
+        self.status_label.pack(fill=tk.X)
+        
+        # Progress bar
+        self.progress = ttk.Progressbar(
+            main_frame,
+            mode='indeterminate',
+            length=300
+        )
+        self.progress.pack(fill=tk.X, pady=(20, 0))
+        self.progress.start(10)
+        
+        # Cancel button
+        cancel_btn = tk.Button(
+            main_frame,
+            text="Cancel",
+            command=self.cancel_connection_test,
+            bg=self.colors['bg_tertiary'],
+            fg=self.colors['text_primary'],
+            font=('Arial', 9),
+            relief='flat',
+            bd=0,
+            padx=15,
+            pady=5,
+            activebackground=self.colors['hover_secondary']
+        )
+        cancel_btn.pack(pady=(15, 0))
+        
+        # Start animation
+        self.animate_connection()
+    
+    def animate_connection(self):
+        """Update connection animation"""
+        if hasattr(self, 'connection_window') and self.connection_window.winfo_exists():
+            self.animation_index = (self.animation_index + 1) % len(self.animation_frames)
+            self.animation_label.config(text=self.animation_frames[self.animation_index])
+            self.root.after(100, self.animate_connection)
+    
+    def stop_connection_animation(self, result):
+        """Stop animation and show result"""
+        if hasattr(self, 'connection_window'):
+            self.connection_window.destroy()
+        
+        if result['success']:
+            self.connection_verified = True
+            self.last_connection_test = time.time()
+            messagebox.showinfo("Connection Test", result['message'])
+        else:
+            self.connection_verified = False
+            messagebox.showerror("Connection Test", result['message'])
+    
+    def cancel_connection_test(self):
+        """Cancel ongoing connection test"""
+        if hasattr(self, 'connection_window'):
+            self.connection_window.destroy()
+        self.connection_verified = False
+
     def load_configuration(self):
         """Load configuration from config file"""
         config = configparser.ConfigParser()
@@ -733,12 +1012,24 @@ class DarkChatbotGUI:
             print(f"❌ Error saving configuration: {e}")
     
     def update_connection_status(self):
-        """Update the connection status display"""
-        status_color = self.colors['accent_success'] if self.mode == 'offline' else self.colors['accent_secondary']
-        status_text = f"● {self.mode.upper()} MODE"
+        """Update the connection status display with detailed info"""
+        if self.mode == 'offline':
+            status_color = self.colors['accent_success']
+            status_text = "● OFFLINE MODE"
+        else:
+            if self.connection_verified:
+                status_color = self.colors['accent_success']
+                status_text = "● ONLINE MODE"
+            else:
+                status_color = self.colors['accent_error']
+                status_text = "● CONNECTION FAILED"
+        
         if self.mode == 'online':
             status_text += f" - {self.server_url}"
         
+        if hasattr(self, 'connection_status'):
+            self.connection_status.config(text=status_text, fg=status_color)
+    
         if hasattr(self, 'status_var'):
             self.status_var.set(status_text)
     
@@ -1116,9 +1407,35 @@ How can I assist you today?"""
             self.root.after(0, self.processing_complete)
     
     def process_message_online(self, user_text):
-        """Process message in online mode using web server"""
+        """Process message in online mode with enhanced connection handling"""
+        # Test connection first if not recently verified
+        if not self.connection_verified or (self.last_connection_test and 
+                                          time.time() - self.last_connection_test > 300):  # 5 minutes
+            self.root.after(0, lambda: self.add_message("thinking", "🔍 Checking server connection..."))
+            
+            # Test connection silently
+            def silent_connection_test():
+                self.test_connection_advanced(show_result=False)
+                # Continue with message processing after test
+                self.root.after(0, lambda: self.continue_online_processing(user_text))
+            
+            threading.Thread(target=silent_connection_test, daemon=True).start()
+        else:
+            self.continue_online_processing(user_text)
+
+    def continue_online_processing(self, user_text):
+        """Continue with online message processing after connection check"""
+        if not self.connection_verified:
+            self.root.after(0, lambda: self.add_message("error", 
+                "❌ Cannot connect to server. Please check:\n"
+                "• Server URL in Settings\n"
+                "• If the server is running\n"
+                "• Your network connection"))
+            self.root.after(0, self.processing_complete)
+            return
+        
         try:
-            self.root.after(0, lambda: self.add_message("thinking", "🤔 Connecting to server..."))
+            self.root.after(0, lambda: self.add_message("thinking", "🔄 Sending request to server..."))
             
             # Send request to web server
             response = requests.post(f"{self.server_url}/api/chat", 
@@ -1131,17 +1448,23 @@ How can I assist you today?"""
                     # Start streaming from server
                     self.root.after(0, lambda: self.start_streaming())
                 else:
-                    self.root.after(0, lambda: self.add_message("error", f"Server error: {data.get('error', 'Unknown error')}"))
+                    self.root.after(0, lambda: self.add_message("error", 
+                        f"❌ Server error: {data.get('error', 'Unknown error')}"))
                     self.root.after(0, self.processing_complete)
             else:
-                self.root.after(0, lambda: self.add_message("error", f"Server connection failed: {response.status_code}"))
+                self.root.after(0, lambda: self.add_message("error", 
+                    f"❌ Server returned error: {response.status_code}"))
+                self.connection_verified = False
                 self.root.after(0, self.processing_complete)
                 
         except requests.exceptions.RequestException as e:
-            self.root.after(0, lambda: self.add_message("error", f"Connection error: {str(e)}"))
+            self.root.after(0, lambda: self.add_message("error", 
+                f"❌ Connection error: {str(e)}\n\n"
+                f"Please check your connection and server settings."))
+            self.connection_verified = False
             self.root.after(0, self.processing_complete)
         except Exception as e:
-            self.root.after(0, lambda: self.add_message("error", f"An error occurred: {str(e)}"))
+            self.root.after(0, lambda: self.add_message("error", f"❌ An error occurred: {str(e)}"))
             self.root.after(0, self.processing_complete)
     
     def start_streaming(self):
@@ -1459,17 +1782,8 @@ How can I assist you today?"""
         
         # Test connection button
         def test_connection():
-            if mode_var.get() == "online":
-                try:
-                    response = requests.get(f"{url_var.get()}/health", timeout=5)
-                    if response.status_code == 200:
-                        messagebox.showinfo("Connection Test", "✅ Connection successful!")
-                    else:
-                        messagebox.showerror("Connection Test", f"❌ Server returned status {response.status_code}")
-                except Exception as e:
-                    messagebox.showerror("Connection Test", f"❌ Connection failed: {str(e)}")
-            else:
-                messagebox.showinfo("Connection Test", "✅ Offline mode selected")
+            # Use the advanced connection test with animation
+            self.test_connection_advanced(url_var.get().strip())
         
         test_btn = tk.Button(connection_frame, text="Test Connection", 
                            command=test_connection,
@@ -1498,9 +1812,11 @@ How can I assist you today?"""
 • Additional Info Speed: {self.chatbot.additional_info_speed} WPM
 • Model: {self.chatbot.current_model}"""
         else:
+            connection_status = "✅ Verified" if self.connection_verified else "❌ Not verified"
             settings_text = f"""Web Server:
 • Server URL: {self.server_url}
-• Mode: {self.mode.title()}"""
+• Mode: {self.mode.title()}
+• Connection: {connection_status}"""
         
         info_label = tk.Label(info_frame, text=settings_text,
                             font=('Arial', 9),
@@ -1515,7 +1831,7 @@ How can I assist you today?"""
         
         def save_settings():
             self.mode = mode_var.get()
-            self.server_url = url_var.get().strip()
+            self.server_url = self.normalize_server_url(url_var.get().strip())
             
             # Update config
             self.config.set('connection', 'mode', self.mode)

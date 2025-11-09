@@ -72,6 +72,7 @@
             transition: transform 0.3s ease;
             z-index: 999;
             position: relative;
+            flex-shrink: 0;
         }
         
         .sidebar.collapsed {
@@ -160,11 +161,9 @@
             font-size: 14px;
             display: flex;
             align-items: center;
-            gap: 5px;
-        }
-        
-        .sidebar-toggle .toggle-text {
-            font-size: 12px;
+            justify-content: center;
+            width: 40px;
+            height: 40px;
         }
         
         /* Main Content */
@@ -173,12 +172,14 @@
             display: flex;
             flex-direction: column;
             padding: 20px;
-            transition: margin-left 0.3s ease;
+            transition: all 0.3s ease;
             position: relative;
+            min-width: 0; /* Allows proper flex shrinking */
         }
         
         .main-content.expanded {
             margin-left: 0;
+            width: 100%;
         }
         
         .chat-header {
@@ -250,6 +251,7 @@
             margin-bottom: 20px;
             display: flex;
             flex-direction: column;
+            transition: all 0.3s ease;
         }
         
         /* Custom scrollbar for chat display */
@@ -484,18 +486,22 @@
                 top: 15px;
                 left: 15px;
                 z-index: 1000;
+                width: 40px;
+                height: 40px;
             }
             
             .main-content {
                 padding: 10px;
                 margin-left: 0 !important;
+                width: 100%;
             }
             
             .chat-header {
-                padding-top: 50px;
+                padding-top: 60px; /* More space for hamburger and model select */
                 flex-direction: column;
                 gap: 10px;
                 align-items: flex-start;
+                min-height: 80px;
             }
             
             .header-content {
@@ -511,11 +517,13 @@
                 align-items: flex-start;
                 gap: 10px;
                 width: 100%;
+                margin-left: 0;
             }
             
             .model-select {
                 min-width: 100%;
                 width: 100%;
+                margin-left: 0;
             }
             
             .chat-display {
@@ -556,10 +564,11 @@
             .mobile-overlay.active {
                 display: block;
             }
-            
-            /* Hide desktop toggle text on mobile */
-            .sidebar-toggle .toggle-text {
-                display: none;
+
+            /* Mobile header adjustments */
+            .chat-header h2 {
+                font-size: 18px;
+                margin-bottom: 5px;
             }
         }
         
@@ -571,14 +580,30 @@
             
             .sidebar.collapsed-desktop {
                 transform: translateX(-100%);
+                width: 0;
+                border-right: none;
             }
             
             .main-content.expanded-desktop {
                 margin-left: 0;
+                width: 100%;
+                padding-left: 20px;
+                padding-right: 20px;
             }
             
             .sidebar:not(.collapsed-desktop) + .main-content {
                 margin-left: 0;
+                width: calc(100% - 280px);
+            }
+            
+            /* Adjust chat display width when sidebar is collapsed */
+            .sidebar.collapsed-desktop + .main-content .chat-display {
+                width: 100%;
+            }
+
+            /* Hide any text in desktop toggle button */
+            .sidebar-toggle .toggle-text {
+                display: none !important;
             }
         }
         
@@ -608,6 +633,31 @@
             
             .quick-actions {
                 justify-content: center;
+            }
+
+            .chat-header {
+                padding-top: 50px;
+                min-height: 70px;
+            }
+
+            .chat-header h2 {
+                font-size: 16px;
+            }
+        }
+
+        /* Extra small devices */
+        @media screen and (max-width: 360px) {
+            .chat-header {
+                padding-top: 45px;
+            }
+
+            .model-select {
+                font-size: 12px;
+                padding: 6px 10px;
+            }
+
+            .chat-header h2 {
+                font-size: 14px;
             }
         }
         
@@ -691,8 +741,7 @@
 
     <!-- Mobile Sidebar Toggle -->
     <button class="sidebar-toggle" id="sidebar-toggle">
-        <span class="toggle-icon">☰</span>
-        <span class="toggle-text">Menu</span>
+        ☰
     </button>
     
     <!-- Mobile Overlay -->
