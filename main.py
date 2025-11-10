@@ -5,10 +5,6 @@ import time
 import sys
 import os
 import configparser
-import requests
-import json
-import re
-from urllib.parse import urlparse
 
 # Add the directory containing ai_engine.py to Python path
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
@@ -22,13 +18,11 @@ except ImportError as e:
     sys.exit(1)
 
 class MiniChatWindow:
-    def __init__(self, parent, chatbot, main_chat_display, main_add_message_method, mode="offline", server_url="http://localhost:5000"):
+    def __init__(self, parent, chatbot, main_chat_display, main_add_message_method):
         self.parent = parent
         self.chatbot = chatbot
         self.main_chat_display = main_chat_display
         self.main_add_message = main_add_message_method
-        self.mode = mode
-        self.server_url = server_url
         self.is_processing = False
         
         # Color scheme (same as main window)
@@ -46,8 +40,8 @@ class MiniChatWindow:
             'text_tertiary': '#8080a0',
             'border': '#404080',
             'input_bg': '#2d2d5a',
-            'input_bg_disabled': '#1a1a3a',
-            'text_disabled': '#8080a0',
+            'input_bg_disabled': '#1a1a3a',  # Darker shade for disabled state
+            'text_disabled': '#8080a0',      # Dimmed text for disabled state
             'hover_primary': '#5750d3',
             'hover_secondary': '#35356a'
         }
@@ -57,7 +51,7 @@ class MiniChatWindow:
     def setup_mini_window(self):
         # Create mini window
         self.mini_window = tk.Toplevel(self.parent)
-        self.mini_window.title(f"Edgar Mini ({self.mode.title()} Mode)")
+        self.mini_window.title("Edgar Mini")
         self.mini_window.geometry("400x500")
         self.mini_window.configure(bg=self.colors['bg_primary'])
         self.mini_window.resizable(True, True)
@@ -75,7 +69,7 @@ class MiniChatWindow:
         header_frame = tk.Frame(self.mini_window, bg=self.colors['bg_secondary'])
         header_frame.pack(fill=tk.X, padx=10, pady=10)
         
-        tk.Label(header_frame, text=f"🤖 Edgar Mini ({self.mode.title()})", 
+        tk.Label(header_frame, text="🤖 Edgar Mini", 
                 bg=self.colors['bg_secondary'], fg=self.colors['text_primary'],
                 font=('Arial', 12, 'bold')).pack(side=tk.LEFT)
         
@@ -106,7 +100,7 @@ class MiniChatWindow:
         )
         self.mini_chat_display.pack(fill=tk.BOTH, expand=True, padx=10, pady=(0, 10))
         
-        # Configure tags for mini window (same as before)
+        # Configure tags for mini window
         self.mini_chat_display.tag_config('user_timestamp', 
                                         foreground=self.colors['text_tertiary'],
                                         justify='right',
@@ -250,9 +244,9 @@ class MiniChatWindow:
                 self.mini_chat_display.config(state=tk.DISABLED)
                 self.mini_chat_display.see(tk.END)
             else:
-                self.add_mini_message("system", f"🌟 Edgar Mini Assistant ({self.mode.title()} Mode)\nAlways on top for quick help!")
+                self.add_mini_message("system", "🌟 Edgar Mini Assistant\nAlways on top for quick help!")
         except Exception as e:
-            self.add_mini_message("system", f"🌟 Edgar Mini Assistant ({self.mode.title()} Mode)\nAlways on top for quick help!")
+            self.add_mini_message("system", "🌟 Edgar Mini Assistant\nAlways on top for quick help!")
     
     def apply_tags_to_mini_display(self):
         """Apply proper tags to mini window display based on content patterns"""
@@ -363,24 +357,21 @@ class MiniChatWindow:
         # Clear input field
         self.mini_user_input.delete(0, tk.END)
         self.mini_send_button.config(state=tk.DISABLED)
-        self.mini_user_input.config(state=tk.DISABLED)
+        self.mini_user_input.config(state=tk.DISABLED)  # Disable input during processing
         self.is_processing = True
         
         # Display user message in both windows
         self.add_mini_message("user", user_text)
         
-        # Process message based on mode
-        if self.mode == "offline":
-            threading.Thread(target=self.process_mini_message_offline, args=(user_text,), daemon=True).start()
-        else:
-            threading.Thread(target=self.process_mini_message_online, args=(user_text,), daemon=True).start()
+        # Process message in separate thread
+        threading.Thread(target=self.process_mini_message, args=(user_text,), daemon=True).start()
     
-    def process_mini_message_offline(self, user_text):
-        """Process message in offline mode using local chatbot"""
+    def process_mini_message(self, user_text):
         try:
+            # Show thinking indicator
             self.mini_window.after(0, lambda: self.add_mini_message("thinking", "🤔 Processing your request..."))
             
-            # Process the message using the local chatbot
+            # Process the message using the chatbot
             responses = self.chatbot.process_multiple_questions(user_text)
             
             # Clear thinking indicator
@@ -389,106 +380,15 @@ class MiniChatWindow:
             self.mini_chat_display.config(state=tk.DISABLED)
             
             # Update both windows with responses
-            self.mini_window.after(0, lambda: self.display_mini_responses_offline(responses))
+            self.mini_window.after(0, lambda: self.display_mini_responses(responses))
             
         except Exception as e:
             self.mini_window.after(0, lambda: self.add_mini_message("error", f"An error occurred: {str(e)}"))
         finally:
             self.mini_window.after(0, self.mini_processing_complete)
     
-    def process_mini_message_online(self, user_text):
-        """Process message in online mode using web server with connection checking"""
-        # Use parent's connection verification
-        if not self.parent.connection_verified:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", 
-                "❌ Server connection not verified.\n"
-                "Please check connection in main window."))
-            self.mini_window.after(0, self.mini_processing_complete)
-            return
-        
-        try:
-            self.mini_window.after(0, lambda: self.add_mini_message("thinking", "🔄 Connecting to server..."))
-            
-            # Send request to web server
-            response = requests.post(f"{self.server_url}/api/chat", 
-                                   json={"message": user_text},
-                                   timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('success'):
-                    # Start streaming from server
-                    self.mini_window.after(0, lambda: self.start_mini_streaming())
-                else:
-                    self.mini_window.after(0, lambda: self.add_mini_message("error", 
-                        f"Server error: {data.get('error', 'Unknown error')}"))
-                    self.mini_window.after(0, self.mini_processing_complete)
-            else:
-                self.mini_window.after(0, lambda: self.add_mini_message("error", 
-                    f"Server connection failed: {response.status_code}"))
-                self.parent.connection_verified = False
-                self.mini_window.after(0, self.mini_processing_complete)
-                
-        except requests.exceptions.RequestException as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", 
-                f"Connection error: {str(e)}"))
-            self.parent.connection_verified = False
-            self.mini_window.after(0, self.mini_processing_complete)
-        except Exception as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", 
-                f"An error occurred: {str(e)}"))
-            self.mini_window.after(0, self.mini_processing_complete)
-    
-    def start_mini_streaming(self):
-        """Start streaming from web server for mini window"""
-        try:
-            # Create new bot message
-            timestamp = time.strftime("%H:%M")
-            self.mini_chat_display.config(state=tk.NORMAL)
-            self.mini_chat_display.insert(tk.END, f"\n", 'system')
-            self.mini_chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
-            self.mini_chat_display.insert(tk.END, "Edgar: ", 'bot_header')
-            self.mini_chat_display.config(state=tk.DISABLED)
-            
-            # Start SSE connection
-            threading.Thread(target=self.listen_mini_stream, daemon=True).start()
-            
-        except Exception as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", f"Streaming error: {str(e)}"))
-            self.mini_window.after(0, self.mini_processing_complete)
-    
-    def listen_mini_stream(self):
-        """Listen to server-sent events for mini window"""
-        try:
-            response = requests.get(f"{self.server_url}/api/stream", stream=True, timeout=30)
-            
-            for line in response.iter_lines():
-                if line:
-                    line = line.decode('utf-8')
-                    if line.startswith('data: '):
-                        data = json.loads(line[6:])
-                        
-                        if data['type'] == 'content':
-                            self.mini_window.after(0, lambda text=data['text']: self.stream_to_mini_display(text))
-                        elif data['type'] == 'metadata':
-                            self.mini_window.after(0, lambda: self.add_mini_message("match_info", 
-                                f"{data.get('match_type', 'unknown').replace('_', ' ').title()} "
-                                f"(confidence: {data.get('confidence', 0):.2f})"))
-                        elif data['type'] == 'end':
-                            self.mini_window.after(0, lambda: self.add_mini_message("system", "─" * 40))
-                            self.mini_window.after(0, self.mini_processing_complete)
-                            break
-                        elif data['type'] == 'error':
-                            self.mini_window.after(0, lambda: self.add_mini_message("error", data.get('text', 'Unknown error')))
-                            self.mini_window.after(0, self.mini_processing_complete)
-                            break
-                            
-        except Exception as e:
-            self.mini_window.after(0, lambda: self.add_mini_message("error", f"Stream connection lost: {str(e)}"))
-            self.mini_window.after(0, self.mini_processing_complete)
-    
-    def display_mini_responses_offline(self, responses):
-        """Display chatbot responses in offline mode"""
+    def display_mini_responses(self, responses):
+        """Display chatbot responses in the GUI with all extra information"""
         for i, (original_question, answer, confidence, corrections, matched_question, match_type) in enumerate(responses, 1):
             
             # Show corrections if any
@@ -550,7 +450,7 @@ class MiniChatWindow:
     def mini_processing_complete(self):
         self.is_processing = False
         self.mini_send_button.config(state=tk.NORMAL)
-        self.mini_user_input.config(state=tk.NORMAL)
+        self.mini_user_input.config(state=tk.NORMAL)  # Re-enable input
         self.mini_user_input.focus()
     
     def quick_mini_action(self, action):
@@ -569,8 +469,8 @@ class MiniChatWindow:
         # Copy mini window content back to main window before closing
         self.copy_mini_history_to_main()
         self.mini_window.destroy()
-        self.parent.deiconify()
-        self.parent.lift()
+        self.parent.deiconify()  # Restore main window
+        self.parent.lift()       # Bring to front
         self.parent.focus_force()
     
     def copy_mini_history_to_main(self):
@@ -654,7 +554,7 @@ class DarkChatbotGUI:
         
         # Set window icon and theme (helps with Windows title bar)
         try:
-            self.root.iconbitmap("edgar_icon.ico")
+            self.root.iconbitmap("edgar_icon.ico")  # You can add an icon file if desired
         except:
             pass
         
@@ -673,8 +573,8 @@ class DarkChatbotGUI:
             'text_tertiary': '#8080a0',
             'border': '#404080',
             'input_bg': '#2d2d5a',
-            'input_bg_disabled': '#1a1a3a',
-            'text_disabled': '#8080a0',
+            'input_bg_disabled': '#1a1a3a',  # Darker shade for disabled state
+            'text_disabled': '#8080a0',      # Dimmed text for disabled state
             'hover_primary': '#5750d3',
             'hover_secondary': '#35356a',
             'scrollbar_bg': '#1a1a2e',
@@ -682,24 +582,11 @@ class DarkChatbotGUI:
             'scrollbar_hover': '#5750d3'
         }
         
-        # Connection settings
-        self.mode = self.config.get('connection', 'mode', fallback='offline')
-        self.server_url = self.config.get('connection', 'server_url', fallback='http://localhost:5000')
-        
-        # Validate and normalize server URL
-        self.server_url = self.normalize_server_url(self.server_url)
-        
-        # Connection status tracking
-        self.connection_verified = False
-        self.last_connection_test = None
-        
-        # Initialize chatbot (for offline mode)
-        self.chatbot = None
-        if self.mode == 'offline':
-            self.chatbot = AdvancedChatbot(
-                config_file="config.cfg",
-                auto_start_chat=False
-            )
+        # Initialize chatbot with configuration from config file
+        self.chatbot = AdvancedChatbot(
+            config_file="config.cfg",
+            auto_start_chat=False  # Don't auto-start console chat in GUI
+        )
         
         # GUI variables
         self.is_processing = False
@@ -708,266 +595,7 @@ class DarkChatbotGUI:
         self.is_streaming = False
         
         self.setup_gui()
-        
-        # Update status based on mode
-        self.update_connection_status()
     
-    def normalize_server_url(self, url):
-        """Normalize and validate server URL"""
-        if not url:
-            return "http://localhost:5000"
-        
-        # Add http:// if no protocol specified
-        if not url.startswith(('http://', 'https://')):
-            url = 'http://' + url
-        
-        # Remove trailing slashes
-        url = url.rstrip('/')
-        
-        return url
-
-    def validate_server_url(self, url):
-        """Validate server URL format"""
-        try:
-            parsed = urlparse(url)
-            if not parsed.netloc:
-                return False, "Invalid URL format"
-            
-            # Check if it's an IP address or hostname
-            if parsed.hostname:
-                # Basic IP validation (simple check)
-                ip_pattern = r'^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$'
-                if re.match(ip_pattern, parsed.hostname):
-                    # Validate IP octets
-                    octets = parsed.hostname.split('.')
-                    for octet in octets:
-                        if not 0 <= int(octet) <= 255:
-                            return False, "Invalid IP address"
-                
-                return True, "URL format is valid"
-            
-            return False, "Invalid hostname"
-        except Exception as e:
-            return False, f"URL validation error: {str(e)}"
-
-    def test_connection_advanced(self, url=None, show_result=True):
-        """Test connection with detailed feedback and animation"""
-        if url is None:
-            url = self.server_url
-        
-        # Normalize the URL first
-        url = self.normalize_server_url(url)
-        
-        # Validate URL format
-        is_valid, validation_msg = self.validate_server_url(url)
-        if not is_valid:
-            if show_result:
-                messagebox.showerror("Connection Test", f"❌ Invalid URL:\n{validation_msg}")
-            return False
-        
-        # Start connection animation
-        if show_result:
-            self.start_connection_animation(url)
-        
-        def connection_test():
-            try:
-                # Test basic connectivity
-                start_time = time.time()
-                response = requests.get(f"{url}/health", timeout=5)
-                end_time = time.time()
-                response_time = int((end_time - start_time) * 1000)
-                
-                if response.status_code == 200:
-                    data = response.json()
-                    server_status = data.get('status', 'unknown')
-                    server_version = data.get('version', 'unknown')
-                    
-                    # Test chat endpoint
-                    chat_response = requests.post(f"{url}/api/chat", 
-                                                json={"message": "test"},
-                                                timeout=5)
-                    chat_ok = chat_response.status_code == 200
-                    
-                    # Test streaming endpoint
-                    stream_response = requests.get(f"{url}/api/stream", 
-                                                 timeout=5, 
-                                                 stream=False)
-                    stream_ok = stream_response.status_code == 200
-                    
-                    result = {
-                        'success': True,
-                        'url': url,
-                        'response_time': response_time,
-                        'server_status': server_status,
-                        'server_version': server_version,
-                        'chat_endpoint': chat_ok,
-                        'stream_endpoint': stream_ok,
-                        'message': f"✅ Connection successful!\n\n"
-                                 f"• Server: {url}\n"
-                                 f"• Response time: {response_time}ms\n"
-                                 f"• Status: {server_status}\n"
-                                 f"• Version: {server_version}\n"
-                                 f"• Chat API: {'✅' if chat_ok else '❌'}\n"
-                                 f"• Stream API: {'✅' if stream_ok else '❌'}"
-                    }
-                    
-                else:
-                    result = {
-                        'success': False,
-                        'url': url,
-                        'message': f"❌ Server returned status {response.status_code}\n\n"
-                                 f"URL: {url}\n"
-                                 f"Response: {response.text if response.text else 'No response body'}"
-                    }
-                    
-            except requests.exceptions.ConnectTimeout:
-                result = {
-                    'success': False,
-                    'url': url,
-                    'message': f"❌ Connection timeout\n\n"
-                             f"URL: {url}\n"
-                             f"The server didn't respond within 5 seconds."
-                }
-            except requests.exceptions.ConnectionError:
-                result = {
-                    'success': False,
-                    'url': url,
-                    'message': f"❌ Connection refused\n\n"
-                             f"URL: {url}\n"
-                             f"• Check if the server is running\n"
-                             f"• Verify the IP/port is correct\n"
-                             f"• Check firewall settings"
-                }
-            except requests.exceptions.RequestException as e:
-                result = {
-                    'success': False,
-                    'url': url,
-                    'message': f"❌ Network error\n\n"
-                             f"URL: {url}\n"
-                             f"Error: {str(e)}"
-                }
-            except Exception as e:
-                result = {
-                    'success': False,
-                    'url': url,
-                    'message': f"❌ Unexpected error\n\n"
-                             f"URL: {url}\n"
-                             f"Error: {str(e)}"
-                }
-            
-            # Update UI in main thread
-            if show_result:
-                self.root.after(0, lambda: self.stop_connection_animation(result))
-            else:
-                # Silent test for initialization
-                if result['success']:
-                    self.connection_verified = True
-                    self.last_connection_test = time.time()
-        
-        # Run connection test in thread
-        threading.Thread(target=connection_test, daemon=True).start()
-    
-    def start_connection_animation(self, url):
-        """Show connection animation"""
-        self.connection_window = tk.Toplevel(self.root)
-        self.connection_window.title("Testing Connection")
-        self.connection_window.geometry("400x200")
-        self.connection_window.configure(bg=self.colors['bg_primary'])
-        self.connection_window.resizable(False, False)
-        self.connection_window.transient(self.root)
-        self.connection_window.grab_set()
-        
-        # Center the window
-        self.connection_window.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - (self.connection_window.winfo_width() // 2)
-        y = (self.root.winfo_screenheight() // 2) - (self.connection_window.winfo_height() // 2)
-        self.connection_window.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = tk.Frame(self.connection_window, bg=self.colors['bg_primary'], padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Animation frames
-        self.animation_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
-        self.animation_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        # Spinning animation
-        self.animation_index = 0
-        self.animation_frames = ["⡿", "⣟", "⣯", "⣷", "⣾", "⣽", "⣻", "⢿"]
-        self.animation_label = tk.Label(
-            self.animation_frame, 
-            text=self.animation_frames[0],
-            font=('Arial', 24),
-            bg=self.colors['bg_primary'],
-            fg=self.colors['accent_secondary']
-        )
-        self.animation_label.pack()
-        
-        # Status text
-        self.status_label = tk.Label(
-            main_frame,
-            text=f"Connecting to:\n{url}",
-            font=('Arial', 10),
-            bg=self.colors['bg_primary'],
-            fg=self.colors['text_secondary'],
-            justify=tk.CENTER
-        )
-        self.status_label.pack(fill=tk.X)
-        
-        # Progress bar
-        self.progress = ttk.Progressbar(
-            main_frame,
-            mode='indeterminate',
-            length=300
-        )
-        self.progress.pack(fill=tk.X, pady=(20, 0))
-        self.progress.start(10)
-        
-        # Cancel button
-        cancel_btn = tk.Button(
-            main_frame,
-            text="Cancel",
-            command=self.cancel_connection_test,
-            bg=self.colors['bg_tertiary'],
-            fg=self.colors['text_primary'],
-            font=('Arial', 9),
-            relief='flat',
-            bd=0,
-            padx=15,
-            pady=5,
-            activebackground=self.colors['hover_secondary']
-        )
-        cancel_btn.pack(pady=(15, 0))
-        
-        # Start animation
-        self.animate_connection()
-    
-    def animate_connection(self):
-        """Update connection animation"""
-        if hasattr(self, 'connection_window') and self.connection_window.winfo_exists():
-            self.animation_index = (self.animation_index + 1) % len(self.animation_frames)
-            self.animation_label.config(text=self.animation_frames[self.animation_index])
-            self.root.after(100, self.animate_connection)
-    
-    def stop_connection_animation(self, result):
-        """Stop animation and show result"""
-        if hasattr(self, 'connection_window'):
-            self.connection_window.destroy()
-        
-        if result['success']:
-            self.connection_verified = True
-            self.last_connection_test = time.time()
-            messagebox.showinfo("Connection Test", result['message'])
-        else:
-            self.connection_verified = False
-            messagebox.showerror("Connection Test", result['message'])
-    
-    def cancel_connection_test(self):
-        """Cancel ongoing connection test"""
-        if hasattr(self, 'connection_window'):
-            self.connection_window.destroy()
-        self.connection_verified = False
-
     def load_configuration(self):
         """Load configuration from config file"""
         config = configparser.ConfigParser()
@@ -979,10 +607,6 @@ class DarkChatbotGUI:
                 'window_width': '1000',
                 'window_height': '700',
                 'streaming_enabled': 'True'
-            },
-            'connection': {
-                'mode': 'offline',
-                'server_url': 'http://localhost:5000'
             }
         }
         
@@ -996,42 +620,11 @@ class DarkChatbotGUI:
         # Load from file if exists
         if os.path.exists("config.cfg"):
             config.read("config.cfg")
-            print("✅ Loaded configuration from config.cfg")
+            print("✅ Loaded GUI configuration from config.cfg")
         else:
-            print("⚠️  config.cfg not found, using default configuration")
+            print("⚠️  config.cfg not found, using default GUI configuration")
         
         return config
-    
-    def save_configuration(self):
-        """Save configuration to config file"""
-        try:
-            with open("config.cfg", 'w') as f:
-                self.config.write(f)
-            print("✅ Configuration saved to config.cfg")
-        except Exception as e:
-            print(f"❌ Error saving configuration: {e}")
-    
-    def update_connection_status(self):
-        """Update the connection status display with detailed info"""
-        if self.mode == 'offline':
-            status_color = self.colors['accent_success']
-            status_text = "● OFFLINE MODE"
-        else:
-            if self.connection_verified:
-                status_color = self.colors['accent_success']
-                status_text = "● ONLINE MODE"
-            else:
-                status_color = self.colors['accent_error']
-                status_text = "● CONNECTION FAILED"
-        
-        if self.mode == 'online':
-            status_text += f" - {self.server_url}"
-        
-        if hasattr(self, 'connection_status'):
-            self.connection_status.config(text=status_text, fg=status_color)
-    
-        if hasattr(self, 'status_var'):
-            self.status_var.set(status_text)
     
     def setup_gui(self):
         # Main container
@@ -1066,17 +659,6 @@ class DarkChatbotGUI:
                 bg=self.colors['bg_secondary'], fg=self.colors['text_primary']).pack(pady=(5, 0))
         tk.Label(logo_frame, text="Your Personal Assistant", 
                 font=('Arial', 11), bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack()
-        
-        # Connection status
-        connection_frame = tk.Frame(logo_frame, bg=self.colors['bg_secondary'])
-        connection_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        self.connection_status = tk.Label(connection_frame, 
-                                        text="● OFFLINE MODE",
-                                        font=('Arial', 9, 'bold'),
-                                        bg=self.colors['bg_secondary'],
-                                        fg=self.colors['accent_success'])
-        self.connection_status.pack()
         
         # Separator
         separator = tk.Frame(sidebar, height=2, bg=self.colors['border'])
@@ -1125,9 +707,9 @@ class DarkChatbotGUI:
         main_content = tk.Frame(parent, bg=self.colors['bg_primary'])
         main_content.grid(row=0, column=1, sticky=(tk.N, tk.S, tk.E, tk.W))
         main_content.columnconfigure(0, weight=1)
-        main_content.rowconfigure(0, weight=1)
-        main_content.rowconfigure(1, weight=0)
-        main_content.rowconfigure(2, weight=0)
+        main_content.rowconfigure(0, weight=1)  # Chat display
+        main_content.rowconfigure(1, weight=0)  # Quick actions
+        main_content.rowconfigure(2, weight=0)  # Input area
         
         # Chat display area with custom scrollbar
         chat_frame = tk.Frame(main_content, bg=self.colors['bg_primary'])
@@ -1163,6 +745,7 @@ class DarkChatbotGUI:
             activebackground=self.colors['scrollbar_hover']
         )
         
+        # Configure the scrollbar style
         self.scrollbar.configure(
             bg=self.colors['scrollbar_bg'],
             troughcolor=self.colors['scrollbar_bg']
@@ -1175,6 +758,7 @@ class DarkChatbotGUI:
         self.scrollbar.grid(row=0, column=1, sticky=(tk.N, tk.S))
         
         # Configure tags for different message types
+        # User messages (RIGHT-ALIGNED)
         self.chat_display.tag_config('user_timestamp', 
                                    foreground=self.colors['text_tertiary'],
                                    justify='right',
@@ -1188,6 +772,7 @@ class DarkChatbotGUI:
                                    justify='right',
                                    font=('Arial', 11))
         
+        # Bot messages (LEFT-ALIGNED)  
         self.chat_display.tag_config('bot_timestamp', 
                                    foreground=self.colors['text_tertiary'],
                                    justify='left',
@@ -1300,9 +885,8 @@ class DarkChatbotGUI:
     
     def open_mini_window(self):
         """Open the mini always-on-top window"""
-        self.root.withdraw()
-        self.mini_window = MiniChatWindow(self.root, self.chatbot, self.chat_display, self.add_message, 
-                                        self.mode, self.server_url)
+        self.root.withdraw()  # Hide main window
+        self.mini_window = MiniChatWindow(self.root, self.chatbot, self.chat_display, self.add_message)
     
     def quick_action(self, action):
         if action == "reset":
@@ -1313,7 +897,7 @@ class DarkChatbotGUI:
             self.send_message()
     
     def display_welcome(self):
-        welcome_text = f"""🌟 Welcome to Edgar AI Assistant ({self.mode.upper()} MODE)
+        welcome_text = """🌟 Welcome to Edgar AI Assistant
 
 I'm your intelligent companion designed to help with programming, 
 AI concepts, game development, and much more.
@@ -1333,6 +917,7 @@ How can I assist you today?"""
         if sender == "user":
             # User message - RIGHT ALIGNED
             self.chat_display.insert(tk.END, f"\n", 'system')
+            # Header with timestamp and "You:" on the RIGHT
             self.chat_display.insert(tk.END, f"[{timestamp}] ", 'user_timestamp')
             self.chat_display.insert(tk.END, "You: ", 'user_header')
             self.chat_display.insert(tk.END, f"{message}\n", 'user_msg')
@@ -1341,6 +926,7 @@ How can I assist you today?"""
         elif sender == "bot":
             # Bot message - LEFT ALIGNED  
             self.chat_display.insert(tk.END, f"\n", 'system')
+            # Header with timestamp and "Edgar:" on the LEFT
             self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
             self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
             self.chat_display.insert(tk.END, f"{message}\n", 'bot_msg')
@@ -1379,14 +965,10 @@ How can I assist you today?"""
         # Display user message
         self.add_message("user", user_text)
         
-        # Process message based on mode
-        if self.mode == "offline":
-            threading.Thread(target=self.process_message_offline, args=(user_text,), daemon=True).start()
-        else:
-            threading.Thread(target=self.process_message_online, args=(user_text,), daemon=True).start()
+        # Process message in separate thread to keep GUI responsive
+        threading.Thread(target=self.process_message, args=(user_text,), daemon=True).start()
     
-    def process_message_offline(self, user_text):
-        """Process message in offline mode using local chatbot"""
+    def process_message(self, user_text):
         try:
             # Show thinking indicator
             self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
@@ -1406,117 +988,8 @@ How can I assist you today?"""
             self.root.after(0, lambda: self.add_message("error", f"An error occurred: {str(e)}"))
             self.root.after(0, self.processing_complete)
     
-    def process_message_online(self, user_text):
-        """Process message in online mode with enhanced connection handling"""
-        # Test connection first if not recently verified
-        if not self.connection_verified or (self.last_connection_test and 
-                                          time.time() - self.last_connection_test > 300):  # 5 minutes
-            self.root.after(0, lambda: self.add_message("thinking", "🔍 Checking server connection..."))
-            
-            # Test connection silently
-            def silent_connection_test():
-                self.test_connection_advanced(show_result=False)
-                # Continue with message processing after test
-                self.root.after(0, lambda: self.continue_online_processing(user_text))
-            
-            threading.Thread(target=silent_connection_test, daemon=True).start()
-        else:
-            self.continue_online_processing(user_text)
-
-    def continue_online_processing(self, user_text):
-        """Continue with online message processing after connection check"""
-        if not self.connection_verified:
-            self.root.after(0, lambda: self.add_message("error", 
-                "❌ Cannot connect to server. Please check:\n"
-                "• Server URL in Settings\n"
-                "• If the server is running\n"
-                "• Your network connection"))
-            self.root.after(0, self.processing_complete)
-            return
-        
-        try:
-            self.root.after(0, lambda: self.add_message("thinking", "🔄 Sending request to server..."))
-            
-            # Send request to web server
-            response = requests.post(f"{self.server_url}/api/chat", 
-                                   json={"message": user_text},
-                                   timeout=30)
-            
-            if response.status_code == 200:
-                data = response.json()
-                if data.get('success'):
-                    # Start streaming from server
-                    self.root.after(0, lambda: self.start_streaming())
-                else:
-                    self.root.after(0, lambda: self.add_message("error", 
-                        f"❌ Server error: {data.get('error', 'Unknown error')}"))
-                    self.root.after(0, self.processing_complete)
-            else:
-                self.root.after(0, lambda: self.add_message("error", 
-                    f"❌ Server returned error: {response.status_code}"))
-                self.connection_verified = False
-                self.root.after(0, self.processing_complete)
-                
-        except requests.exceptions.RequestException as e:
-            self.root.after(0, lambda: self.add_message("error", 
-                f"❌ Connection error: {str(e)}\n\n"
-                f"Please check your connection and server settings."))
-            self.connection_verified = False
-            self.root.after(0, self.processing_complete)
-        except Exception as e:
-            self.root.after(0, lambda: self.add_message("error", f"❌ An error occurred: {str(e)}"))
-            self.root.after(0, self.processing_complete)
-    
-    def start_streaming(self):
-        """Start streaming from web server"""
-        try:
-            # Create new bot message
-            timestamp = time.strftime("%H:%M")
-            self.chat_display.config(state=tk.NORMAL)
-            self.chat_display.insert(tk.END, f"\n", 'system')
-            self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
-            self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
-            self.chat_display.config(state=tk.DISABLED)
-            
-            # Start SSE connection
-            threading.Thread(target=self.listen_to_stream, daemon=True).start()
-            
-        except Exception as e:
-            self.root.after(0, lambda: self.add_message("error", f"Streaming error: {str(e)}"))
-            self.root.after(0, self.processing_complete)
-    
-    def listen_to_stream(self):
-        """Listen to server-sent events"""
-        try:
-            response = requests.get(f"{self.server_url}/api/stream", stream=True, timeout=30)
-            
-            for line in response.iter_lines():
-                if line:
-                    line = line.decode('utf-8')
-                    if line.startswith('data: '):
-                        data = json.loads(line[6:])
-                        
-                        if data['type'] == 'content':
-                            self.root.after(0, lambda text=data['text']: self.stream_to_display(text))
-                        elif data['type'] == 'metadata':
-                            self.root.after(0, lambda: self.add_message("match_info", 
-                                f"{data.get('match_type', 'unknown').replace('_', ' ').title()} "
-                                f"(confidence: {data.get('confidence', 0):.2f})"))
-                        elif data['type'] == 'end':
-                            self.root.after(0, lambda: self.add_message("system", "─" * 60))
-                            self.root.after(0, self.processing_complete)
-                            break
-                        elif data['type'] == 'error':
-                            self.root.after(0, lambda: self.add_message("error", data.get('text', 'Unknown error')))
-                            self.root.after(0, self.processing_complete)
-                            break
-                            
-        except Exception as e:
-            self.root.after(0, lambda: self.add_message("error", f"Stream connection lost: {str(e)}"))
-            self.root.after(0, self.processing_complete)
-    
     def display_responses_with_streaming(self, responses):
-        """Display responses using the AI engine's streaming (offline mode)"""
+        """Display responses using the AI engine's streaming"""
         def show_additional_info_and_continue(matched_group, confidence, match_type, current_index):
             """Show match information and context after streaming completes"""
             # Show match information
@@ -1566,6 +1039,13 @@ How can I assist you today?"""
                 self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
                 self.chat_display.config(state=tk.DISABLED)
                 
+                # Calculate streaming time for this response
+                if self.chatbot.streaming_speed > 0:
+                    words = len(answer.split())
+                    streaming_time = (words / self.chatbot.streaming_speed) * 60  # Convert to seconds
+                else:
+                    streaming_time = 0
+                
                 # Stream the response in a separate thread
                 def stream_response():
                     self.chatbot.stream_text(
@@ -1606,82 +1086,46 @@ How can I assist you today?"""
     
     def show_context(self):
         """Display current conversation context"""
-        if self.mode == "offline":
-            context_summary = self.chatbot.get_context_summary()
-            self.add_message("system", f"Current Context: {context_summary}")
-        else:
-            try:
-                response = requests.get(f"{self.server_url}/api/context", timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    context_summary = data.get('context', 'No context available')
-                    self.add_message("system", f"Current Context: {context_summary}")
-                else:
-                    self.add_message("error", "Failed to get context from server")
-            except Exception as e:
-                self.add_message("error", f"Error getting context: {str(e)}")
+        context_summary = self.chatbot.get_context_summary()
+        self.add_message("system", f"Current Context: {context_summary}")
     
     def show_statistics(self):
         """Display chatbot statistics"""
-        if self.mode == "offline":
-            stats = self.chatbot.performance_stats
-            total = stats['total_questions']
-            
-            if total == 0:
-                self.add_message("stats", "No questions processed yet.")
-                return
-            
-            success_rate = stats['successful_matches'] / total
-            
-            stats_text = f"""Conversation Statistics:
+        stats = self.chatbot.performance_stats
+        total = stats['total_questions']
+        
+        if total == 0:
+            self.add_message("stats", "No questions processed yet.")
+            return
+        
+        success_rate = stats['successful_matches'] / total
+        
+        stats_text = f"""Conversation Statistics:
 • Total questions: {total}
 • Success rate: {success_rate:.1%}
 • Follow-up requests: {stats['follow_up_requests']}
 • Context assists: {stats['context_helps']}"""
-            
-            self.add_message("stats", stats_text)
-        else:
-            try:
-                response = requests.get(f"{self.server_url}/api/stats", timeout=10)
-                if response.status_code == 200:
-                    data = response.json()
-                    stats_text = f"""Conversation Statistics:
-• Total questions: {data.get('total_questions', 0)}
-• Success rate: {data.get('success_rate', 0):.1%}
-• Follow-up requests: {data.get('follow_up_requests', 0)}
-• Context assists: {data.get('context_helps', 0)}"""
-                    self.add_message("stats", stats_text)
-                else:
-                    self.add_message("error", "Failed to get statistics from server")
-            except Exception as e:
-                self.add_message("error", f"Error getting statistics: {str(e)}")
+        
+        self.add_message("stats", stats_text)
     
     def reset_chat(self):
         """Reset the conversation"""
         if messagebox.askyesno("New Chat", "Start a new conversation? Current context will be cleared."):
-            if self.mode == "offline":
-                # Reset chatbot context
-                self.chatbot.conversation_context = {
-                    'current_topic': None,
-                    'previous_topics': self.chatbot.conversation_context['previous_topics'],
-                    'mentioned_entities': self.chatbot.conversation_context['mentioned_entities'],
-                    'user_preferences': {},
-                    'conversation_history': self.chatbot.conversation_context['conversation_history'],
-                    'current_goal': None,
-                    'last_successful_match': None,
-                    'conversation_mood': 'neutral',
-                    'topic_consistency_score': 1.0,
-                    'recent_subjects': self.chatbot.conversation_context['recent_subjects'],
-                    'last_detailed_topic': None,
-                    'available_follow_ups': {},
-                }
-            else:
-                try:
-                    response = requests.get(f"{self.server_url}/api/reset", timeout=10)
-                    if response.status_code != 200:
-                        self.add_message("error", "Failed to reset conversation on server")
-                except Exception as e:
-                    self.add_message("error", f"Error resetting conversation: {str(e)}")
+            # Reset chatbot context
+            self.chatbot.conversation_context = {
+                'current_topic': None,
+                'previous_topics': self.chatbot.conversation_context['previous_topics'],
+                'mentioned_entities': self.chatbot.conversation_context['mentioned_entities'],
+                'user_preferences': {},
+                'conversation_history': self.chatbot.conversation_context['conversation_history'],
+                'current_goal': None,
+                'last_successful_match': None,
+                'conversation_mood': 'neutral',
+                'topic_consistency_score': 1.0,
+                'recent_subjects': self.chatbot.conversation_context['recent_subjects'],
+                'last_detailed_topic': None,
+                'available_follow_ups': {},
+            }
             
             # Clear chat display
             self.chat_display.config(state=tk.NORMAL)
@@ -1695,203 +1139,25 @@ How can I assist you today?"""
     
     def show_settings(self):
         """Show settings dialog"""
-        # Create settings window
-        settings_window = tk.Toplevel(self.root)
-        settings_window.title("Edgar AI Settings")
-        settings_window.geometry("500x400")
-        settings_window.configure(bg=self.colors['bg_primary'])
-        settings_window.resizable(False, False)
-        settings_window.transient(self.root)
-        settings_window.grab_set()
-        
-        # Center the settings window
-        settings_window.update_idletasks()
-        x = (self.root.winfo_screenwidth() // 2) - (settings_window.winfo_width() // 2)
-        y = (self.root.winfo_screenheight() // 2) - (settings_window.winfo_height() // 2)
-        settings_window.geometry(f"+{x}+{y}")
-        
-        # Main container
-        main_frame = tk.Frame(settings_window, bg=self.colors['bg_primary'], padx=20, pady=20)
-        main_frame.pack(fill=tk.BOTH, expand=True)
-        
-        # Title
-        tk.Label(main_frame, text="⚙️ Settings", 
-                font=('Arial', 16, 'bold'),
-                bg=self.colors['bg_primary'],
-                fg=self.colors['text_primary']).pack(anchor='w', pady=(0, 20))
-        
-        # Connection Settings
-        connection_frame = tk.LabelFrame(main_frame, text="Connection Settings", 
-                                       font=('Arial', 12, 'bold'),
-                                       bg=self.colors['bg_secondary'],
-                                       fg=self.colors['text_primary'],
-                                       padx=15, pady=15)
-        connection_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        # Mode selection
-        mode_frame = tk.Frame(connection_frame, bg=self.colors['bg_secondary'])
-        mode_frame.pack(fill=tk.X, pady=(0, 10))
-        
-        tk.Label(mode_frame, text="Mode:", 
-                font=('Arial', 10),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']).pack(side=tk.LEFT)
-        
-        mode_var = tk.StringVar(value=self.mode)
-        
-        offline_radio = tk.Radiobutton(mode_frame, text="Offline", 
-                                      variable=mode_var, value="offline",
-                                      font=('Arial', 10),
-                                      bg=self.colors['bg_secondary'],
-                                      fg=self.colors['text_primary'],
-                                      selectcolor=self.colors['bg_tertiary'],
-                                      activebackground=self.colors['bg_secondary'],
-                                      activeforeground=self.colors['text_primary'])
-        offline_radio.pack(side=tk.LEFT, padx=(20, 10))
-        
-        online_radio = tk.Radiobutton(mode_frame, text="Online", 
-                                     variable=mode_var, value="online",
-                                     font=('Arial', 10),
-                                     bg=self.colors['bg_secondary'],
-                                     fg=self.colors['text_primary'],
-                                     selectcolor=self.colors['bg_tertiary'],
-                                     activebackground=self.colors['bg_secondary'],
-                                     activeforeground=self.colors['text_primary'])
-        online_radio.pack(side=tk.LEFT, padx=(10, 0))
-        
-        # Server URL
-        url_frame = tk.Frame(connection_frame, bg=self.colors['bg_secondary'])
-        url_frame.pack(fill=tk.X, pady=(10, 0))
-        
-        tk.Label(url_frame, text="Server URL:", 
-                font=('Arial', 10),
-                bg=self.colors['bg_secondary'],
-                fg=self.colors['text_primary']).pack(anchor='w')
-        
-        url_var = tk.StringVar(value=self.server_url)
-        url_entry = tk.Entry(url_frame, textvariable=url_var,
-                           font=('Arial', 10),
-                           bg=self.colors['input_bg'],
-                           fg=self.colors['text_primary'],
-                           insertbackground=self.colors['text_primary'],
-                           relief='flat',
-                           bd=1,
-                           highlightthickness=1,
-                           highlightcolor=self.colors['accent_primary'])
-        url_entry.pack(fill=tk.X, pady=(5, 0))
-        
-        # Test connection button
-        def test_connection():
-            # Use the advanced connection test with animation
-            self.test_connection_advanced(url_var.get().strip())
-        
-        test_btn = tk.Button(connection_frame, text="Test Connection", 
-                           command=test_connection,
-                           bg=self.colors['accent_primary'],
-                           fg=self.colors['text_primary'],
-                           font=('Arial', 9),
-                           relief='flat',
-                           bd=0,
-                           padx=15,
-                           pady=8,
-                           activebackground=self.colors['hover_primary'])
-        test_btn.pack(anchor='e', pady=(10, 0))
-        
-        # Current Settings Info
-        info_frame = tk.LabelFrame(main_frame, text="Current Settings", 
-                                 font=('Arial', 12, 'bold'),
-                                 bg=self.colors['bg_secondary'],
-                                 fg=self.colors['text_primary'],
-                                 padx=15, pady=15)
-        info_frame.pack(fill=tk.X, pady=(0, 20))
-        
-        if self.mode == "offline" and self.chatbot:
-            settings_text = f"""AI Engine:
+        settings_text = f"""Current Settings:
+
+AI Engine:
 • Streaming Speed: {self.chatbot.streaming_speed} WPM
 • Streaming Mode: {'Letter-by-Letter' if self.chatbot.letter_streaming else 'Word-by-Word'}
 • Additional Info Speed: {self.chatbot.additional_info_speed} WPM
-• Model: {self.chatbot.current_model}"""
-        else:
-            connection_status = "✅ Verified" if self.connection_verified else "❌ Not verified"
-            settings_text = f"""Web Server:
-• Server URL: {self.server_url}
-• Mode: {self.mode.title()}
-• Connection: {connection_status}"""
+• Model: {self.chatbot.current_model}
+
+GUI:
+• Window Size: {self.config.get('gui', 'window_width')}x{self.config.get('gui', 'window_height')}
+• Theme: {self.config.get('gui', 'theme')}
+
+All settings are stored in config.cfg"""
         
-        info_label = tk.Label(info_frame, text=settings_text,
-                            font=('Arial', 9),
-                            bg=self.colors['bg_secondary'],
-                            fg=self.colors['text_secondary'],
-                            justify=tk.LEFT)
-        info_label.pack(anchor='w')
-        
-        # Buttons frame
-        buttons_frame = tk.Frame(main_frame, bg=self.colors['bg_primary'])
-        buttons_frame.pack(fill=tk.X)
-        
-        def save_settings():
-            self.mode = mode_var.get()
-            self.server_url = self.normalize_server_url(url_var.get().strip())
-            
-            # Update config
-            self.config.set('connection', 'mode', self.mode)
-            self.config.set('connection', 'server_url', self.server_url)
-            
-            # Save to file
-            self.save_configuration()
-            
-            # Update connection status
-            self.update_connection_status()
-            self.connection_status.config(
-                text=f"● {self.mode.upper()} MODE" + (f" - {self.server_url}" if self.mode == 'online' else ''),
-                fg=self.colors['accent_success'] if self.mode == 'offline' else self.colors['accent_secondary']
-            )
-            
-            # Re-initialize chatbot if switching to offline mode
-            if self.mode == 'offline' and self.chatbot is None:
-                try:
-                    self.chatbot = AdvancedChatbot(config_file="config.cfg", auto_start_chat=False)
-                    messagebox.showinfo("Settings", "✅ Settings saved successfully!\nChatbot initialized for offline mode.")
-                except Exception as e:
-                    messagebox.showerror("Settings", f"❌ Error initializing chatbot: {str(e)}")
-            else:
-                messagebox.showinfo("Settings", "✅ Settings saved successfully!")
-            
-            settings_window.destroy()
-        
-        def cancel_settings():
-            settings_window.destroy()
-        
-        # Save and Cancel buttons
-        cancel_btn = tk.Button(buttons_frame, text="Cancel", 
-                             command=cancel_settings,
-                             bg=self.colors['bg_tertiary'],
-                             fg=self.colors['text_primary'],
-                             font=('Arial', 10),
-                             relief='flat',
-                             bd=0,
-                             padx=20,
-                             pady=10,
-                             activebackground=self.colors['hover_secondary'])
-        cancel_btn.pack(side=tk.RIGHT, padx=(10, 0))
-        
-        save_btn = tk.Button(buttons_frame, text="Save Settings", 
-                           command=save_settings,
-                           bg=self.colors['accent_primary'],
-                           fg=self.colors['text_primary'],
-                           font=('Arial', 10, 'bold'),
-                           relief='flat',
-                           bd=0,
-                           padx=20,
-                           pady=10,
-                           activebackground=self.colors['hover_primary'])
-        save_btn.pack(side=tk.RIGHT)
+        messagebox.showinfo("Settings", settings_text)
     
     def show_help(self):
         """Show help information"""
-        help_text = f"""🤖 Edgar AI Assistant - Help
-
-Current Mode: {self.mode.upper()}
+        help_text = """🤖 Edgar AI Assistant - Help
 
 Quick Commands:
 • 'tell me more' - Get detailed information
@@ -1905,14 +1171,12 @@ Features:
 • Conversation statistics
 • Mini window (always on top)
 • Real-time text streaming
-• {'Local processing' if self.mode == 'offline' else 'Web server connection'}
 
 Tips:
 • Use the quick action buttons for common questions
 • The assistant maintains context across messages
 • Press Enter to send messages quickly
-• Use 'Mini Window' for always-on-top assistance
-• Change connection mode in Settings"""
+• Use 'Mini Window' for always-on-top assistance"""
 
         messagebox.showinfo("Assistant Help", help_text)
 
@@ -1923,14 +1187,16 @@ def main():
         
         # Try to set Windows dark title bar (Windows 10/11)
         try:
-            if os.name == 'nt':
+            # This uses Windows API to set dark mode for title bar
+            if os.name == 'nt':  # Windows
                 import ctypes
+                # DWMWA_USE_IMMERSIVE_DARK_MODE = 20
                 set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
                 hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-                value = 2
+                value = 2  # Dark mode
                 set_window_attribute(hwnd, 20, ctypes.byref(ctypes.c_int(value)), ctypes.sizeof(ctypes.c_int))
         except:
-            pass
+            pass  # Fall back to default title bar if this fails
         
         app = DarkChatbotGUI(root)
         

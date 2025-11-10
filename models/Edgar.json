@@ -1,38 +1,133 @@
 {
   "name": "Edgar",
-  "description": "",
-  "author": "",
+  "description": "a rule based chatbot assitant in early development",
+  "author": "Aayden",
   "version": "1.0.0",
-  "created_at": "1762218548.6135838",
+  "created_at": "1762753621.2858078",
   "qa_groups": [
     {
       "group_name": "Greeting",
-      "group_description": "to say hi",
+      "group_description": "a common courtasy",
       "questions": [
         "Hi",
-        "hello",
-        "hey"
+        "Hello",
+        "Hey"
       ],
       "answers": [
-        "hello i am edgar a rule based ai assistant coded for use in wildstar studios to help with anything he may need or want"
+        "Hello, How are you today human.",
+        "Hey, How are you",
+        "HI, its a wonderfall day"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [
+        {
+          "branch_name": "continue how are you",
+          "question": "im good.",
+          "answer": "glad to know.",
+          "children": []
+        }
+      ]
+    },
+    {
+      "group_name": "Godot",
+      "group_description": "Info about godot",
+      "questions": [
+        "what is godot"
+      ],
+      "answers": [
+        "Godot is a open source game engine created in 2014"
       ],
       "topic": "greeting",
       "priority": "medium",
       "follow_ups": []
     },
     {
-      "group_name": "Godot",
-      "group_description": "info about godot",
+      "group_name": "I am genderless",
+      "group_description": "response to strange questions",
       "questions": [
-        "what is godot"
+        "thank you bro",
+        "thank you maam"
       ],
       "answers": [
-        "godot is a open source game engine created in 2014 by Juan Linietsky and Ariel Manzur."
+        "thank you. though i am a genderless non sentient rule based ai."
       ],
-      "topic": "general",
+      "topic": "greeting",
       "priority": "medium",
       "follow_ups": []
+    },
+    {
+      "group_name": "What is AI",
+      "group_description": "",
+      "questions": [
+        "What is Ai"
+      ],
+      "answers": [
+        "Ai is a form of artifical intelegence on machines meant to simulate how human brains work."
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "Essay",
+      "group_description": "",
+      "questions": [
+        "I need a essay template"
+      ],
+      "answers": [
+        "what kind of essay?"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [
+        {
+          "branch_name": "plain",
+          "question": "plain",
+          "answer": "here you go\n\nPlain: text goes here",
+          "children": [
+            {
+              "branch_name": "about godot",
+              "question": "about godot",
+              "answer": "here you go\n\nPlain: godot goes here",
+              "children": []
+            }
+          ]
+        },
+        {
+          "branch_name": "simple",
+          "question": "simple",
+          "answer": "here you go\n\nSimple: text goes here",
+          "children": []
+        }
+      ]
+    },
+    {
+      "group_name": "Train question",
+      "group_description": "",
+      "questions": [
+        "can i train you"
+      ],
+      "answers": [
+        "i dont know do you have the training code???"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [
+        {
+          "branch_name": "ok then train me",
+          "question": "yes",
+          "answer": "then launch train.py to train me",
+          "children": []
+        },
+        {
+          "branch_name": "thats too bad",
+          "question": "no",
+          "answer": "ok that is too bad",
+          "children": []
+        }
+      ]
     }
   ],
-  "updated_at": "1762569755.4462352"
+  "updated_at": "1762753621.2858078"
 }
