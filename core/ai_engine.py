@@ -55,23 +55,8 @@ class AdvancedChatbot:
             }
         }
         
-        # Enhanced context system with tree navigation
-        self.conversation_context = {
-            'current_topic': None,
-            'previous_topics': deque(maxlen=5),
-            'mentioned_entities': deque(maxlen=10),
-            'conversation_history': deque(maxlen=6),
-            'last_successful_match': None,
-            'recent_subjects': deque(maxlen=3),
-            
-            # ENHANCED TREE NAVIGATION SYSTEM
-            'active_tree': None,           # Current QA group we're in a tree for
-            'current_branch': None,        # Current branch in the tree
-            'branch_path': [],             # Path taken through the tree [root_branch, child_branch, ...]
-            'available_branches': [],      # Available branches at current level
-            'tree_start_time': None,       # When we entered the tree
-            'tree_messages': 0,            # How many messages in current tree
-        }
+        # Initialize with proper context reset
+        self.reset_conversation_context()
         
         self.performance_stats = {
             'total_questions': 0,
@@ -101,6 +86,31 @@ class AdvancedChatbot:
                 self.chat()
         else:
             print("❌ No models available. Please create a model first using the training GUI.")
+
+    def reset_conversation_context(self):
+        """Completely reset conversation context including tree navigation"""
+        self.conversation_context = {
+            'current_topic': None,
+            'previous_topics': deque(maxlen=5),
+            'mentioned_entities': deque(maxlen=10),
+            'user_preferences': {},
+            'conversation_history': deque(maxlen=6),
+            'current_goal': None,
+            'last_successful_match': None,
+            'conversation_mood': 'neutral',
+            'topic_consistency_score': 1.0,
+            'recent_subjects': deque(maxlen=3),
+            'last_detailed_topic': None,
+            'available_follow_ups': {},
+            
+            # TREE NAVIGATION SYSTEM - FULLY RESET
+            'active_tree': None,
+            'current_branch': None,
+            'branch_path': [],
+            'available_branches': [],
+            'tree_start_time': None,
+            'tree_messages': 0,
+        }
     
     def load_configuration(self) -> configparser.ConfigParser:
         """Load configuration from file"""
@@ -401,7 +411,7 @@ class AdvancedChatbot:
         
         return False
     
-    # ===== STREAMING FUNCTIONALITY =====
+    # ===== FIXED STREAMING FUNCTIONALITY =====
     
     def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None, callback: Callable = None):
         """Stream text word by word or letter by letter with adjustable speed"""
@@ -424,34 +434,51 @@ class AdvancedChatbot:
             return self._stream_words(text, prefix, wpm, output_method)
     
     def _stream_words(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
-        """Stream text word by word"""
+        """Stream text word by word with preserved formatting"""
         words_per_second = wpm / 60.0
         delay_per_word = 1.0 / words_per_second if words_per_second > 0 else 0
         
-        words = text.split()
+        # Split into words but preserve newlines and formatting
+        words_and_newlines = []
+        lines = text.split('\n')
+        
+        for i, line in enumerate(lines):
+            words = line.split()
+            words_and_newlines.extend(words)
+            if i < len(lines) - 1:  # Add newline marker except after last line
+                words_and_newlines.append('\n')
+        
         full_output = prefix
         output_method(prefix)
         
-        for i, word in enumerate(words):
-            if i > 0:
-                full_output += ' '
-                output_method(' ')
-            
-            full_output += word
-            output_method(word)
-            
-            if word.endswith(('.', '!', '?')):
+        for item in words_and_newlines:
+            if item == '\n':
+                full_output += '\n'
+                output_method('\n')
+                # Slightly longer pause after paragraphs
                 time.sleep(delay_per_word * 1.5)
-            elif word.endswith((',', ';', ':')):
-                time.sleep(delay_per_word * 1.2)
             else:
-                time.sleep(delay_per_word)
+                if not full_output.endswith(prefix) and not full_output.endswith('\n'):
+                    full_output += ' '
+                    output_method(' ')
+                
+                full_output += item
+                output_method(item)
+                
+                # Dynamic delays based on punctuation
+                if item.endswith(('.', '!', '?')):
+                    time.sleep(delay_per_word * 1.5)
+                elif item.endswith((',', ';', ':')):
+                    time.sleep(delay_per_word * 1.2)
+                else:
+                    time.sleep(delay_per_word)
         
+        # Always end with newline
         output_method('\n')
         return full_output + '\n'
     
     def _stream_letters(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
-        """Stream text letter by letter"""
+        """Stream text letter by letter with preserved formatting"""
         lpm = wpm * 5
         letters_per_second = lpm / 60.0
         delay_per_letter = 1.0 / letters_per_second if letters_per_second > 0 else 0
@@ -463,12 +490,15 @@ class AdvancedChatbot:
             full_output += char
             output_method(char)
             
+            # Dynamic delays based on character type
             if char in '.!?':
                 time.sleep(delay_per_letter * 3)
             elif char in ',;:':
                 time.sleep(delay_per_letter * 2)
             elif char == ' ':
                 time.sleep(delay_per_letter * 1.5)
+            elif char == '\n':
+                time.sleep(delay_per_letter * 4)  # Longer pause for newlines
             else:
                 time.sleep(delay_per_letter)
         
@@ -511,18 +541,7 @@ class AdvancedChatbot:
         """Find best match with tree awareness"""
         user_question_lower = user_question.lower().strip()
         
-        # Check for tell me more patterns
-        tell_me_response = self.handle_tell_me_more(user_question)
-        if tell_me_response and any(pattern in user_question_lower for pattern in ['tell me more', 'more information', 'explain more']):
-            temp_group = {
-                "group_name": "Follow-up Information",
-                "questions": [user_question],
-                "answers": [tell_me_response],
-                "topic": "follow_up"
-            }
-            return temp_group, 0.9, "follow_up"
-        
-        # Normal matching
+        # Normal matching - REMOVED OLD "TELL ME MORE" SYSTEM
         best_match = None
         best_score = 0.0
         best_match_type = "semantic"
@@ -604,7 +623,7 @@ class AdvancedChatbot:
         
         return bool(user_content.intersection(matched_content))
     
-    # ===== ENHANCED QUESTION PROCESSING =====
+    # ===== OPTIMIZED QUESTION PROCESSING =====
     
     def process_multiple_questions(self, user_input: str) -> List[Tuple]:
         """Process input with tree navigation support"""
@@ -656,14 +675,7 @@ class AdvancedChatbot:
                         self.exit_tree()
                         # Continue with normal processing below
             
-            # SECOND: Check for explicit "tell me more" patterns
-            tell_me_response = self.handle_tell_me_more(question)
-            if tell_me_response and any(pattern in question.lower() for pattern in ['tell me more', 'more information', 'explain more']):
-                responses.append((question, tell_me_response, 0.9, [], "Follow-up Information", "follow_up"))
-                self.update_conversation_context(question, tell_me_response, None, 0.9)
-                continue
-            
-            # THIRD: Proceed with normal matching
+            # SECOND: Proceed with normal matching
             corrected_question, corrections = self.auto_correct_input(question)
             match_result = self.find_best_match(corrected_question)
             
@@ -718,39 +730,6 @@ class AdvancedChatbot:
     
     def get_random_answer(self, answers: List[str]) -> str:
         return random.choice(answers) if answers else "I don't have an answer for that."
-    
-    def handle_tell_me_more(self, user_input: str) -> Optional[str]:
-        """Handle tell me more requests"""
-        user_input_lower = user_input.lower().strip()
-        
-        tell_me_patterns = [
-            r'tell me more(?:\s+about\s+(.+))?',
-            r'more information(?:\s+about\s+(.+))?',
-            r'explain more(?:\s+about\s+(.+))?',
-        ]
-        
-        extracted_subject = None
-        for pattern in tell_me_patterns:
-            match = re.search(pattern, user_input_lower)
-            if match:
-                if match.group(1):
-                    extracted_subject = match.group(1).strip()
-                break
-        
-        if extracted_subject:
-            return self.handle_specific_follow_up(extracted_subject)
-        else:
-            return self.handle_context_follow_up()
-    
-    def handle_specific_follow_up(self, subject: str) -> str:
-        """Handle tell me more about [specific subject]"""
-        self.performance_stats['follow_up_requests'] += 1
-        return f"I don't have detailed information about '{subject}' specifically."
-    
-    def handle_context_follow_up(self) -> str:
-        """Handle general tell me more using conversation context"""
-        self.performance_stats['follow_up_requests'] += 1
-        return "I'd be happy to provide more details! Could you be more specific about what you'd like to learn more about?"
     
     # ===== CONTEXT SYSTEM =====
     
@@ -933,20 +912,7 @@ class AdvancedChatbot:
                     continue
                 
                 elif user_input.lower() == 'reset':
-                    self.conversation_context.update({
-                        'current_topic': None,
-                        'previous_topics': deque(maxlen=5),
-                        'mentioned_entities': deque(maxlen=10),
-                        'conversation_history': deque(maxlen=6),
-                        'last_successful_match': None,
-                        'recent_subjects': deque(maxlen=3),
-                        'active_tree': None,
-                        'current_branch': None,
-                        'branch_path': [],
-                        'available_branches': [],
-                        'tree_start_time': None,
-                        'tree_messages': 0,
-                    })
+                    self.reset_conversation_context()
                     print("🔄 Conversation context reset!")
                     continue
                 
