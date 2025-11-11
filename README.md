@@ -24,7 +24,7 @@ Only use the official version and load or execute models and scripts from truste
 - models ❌
 - subscription for newest models ❌
 
-# planned from failed attempts
+# planned systems from failed attempts
 - search training ❌
 - topic usage system ❌
 - network visualizer ❌
