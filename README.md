@@ -19,3 +19,14 @@
 - models ❌
 - subscription for newest models ❌
 
+# planned from failed attempts
+- search training ❌
+- topic usage system ❌
+- network visualizer ❌
+- binary format ❌
+
+# ideas to implement
+- deep search ❌
+- free API ❌
+- mascot for GUI ❌
+- new online app ❌
