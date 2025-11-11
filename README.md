@@ -1,7 +1,7 @@
 # ⚠️ Notice About Forks
 Forks of this project may contain altered rule sets, corrupted JSON models, modified modules, or Python scripts that run arbitrary code.  
-They are not reviewed or verified. Use caution and only load or execute models and scripts from trusted sources. 
-Only use the official version and load or execute models and scripts from trusted sources.
+They are not reviewed or verified. Only use the official version and load or execute models and scripts from trusted sources.  
+In the future, an official model and module store may provide a safe, verified source for additional content.
 
 # To-Do
 - sentence matching ✅
