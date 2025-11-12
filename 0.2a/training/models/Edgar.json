@@ -1,0 +1,60 @@
+{
+  "name": "Edgar",
+  "description": "",
+  "author": "Aayden",
+  "version": "1.0.0",
+  "created_at": "1762753621.2858078",
+  "qa_groups": [
+    {
+      "group_name": "Essay Types",
+      "group_description": "",
+      "questions": [
+        "how do i make a essay"
+      ],
+      "answers": [
+        "what kind, narrative."
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [
+        {
+          "branch_name": "narrative type",
+          "question": "narrative",
+          "answer": "template here is this template\n\nthis is a test",
+          "children": []
+        }
+      ]
+    },
+    {
+      "group_name": "Greeting",
+      "group_description": "",
+      "questions": [
+        "Hi",
+        "Hello",
+        "Hey"
+      ],
+      "answers": [
+        "hi i am edgar",
+        "hello i am edgar",
+        "hey, i am edgar"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "Godot",
+      "group_description": "",
+      "questions": [
+        "What is godot"
+      ],
+      "answers": [
+        "godot is a open source game engine created in 2014 by juan linskey"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    }
+  ],
+  "updated_at": "1762753621.2858078"
+}

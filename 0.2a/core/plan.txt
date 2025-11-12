@@ -1,0 +1,13 @@
+planned from failed attempts
+
+- search training
+- topic usage
+- fake network visualizer
+- binary format
+
+ideas to implement
+- group sections
+- deep search
+- free API
+- mascot for GUI
+- 
