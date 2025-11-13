@@ -7,7 +7,9 @@ import os
 import configparser
 
 # Add the core directory to Python path
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), 'core'))
+current_dir = os.path.dirname(os.path.abspath(__file__))
+core_dir = os.path.join(current_dir, 'core')
+sys.path.insert(0, core_dir)  # Use insert(0) to prioritize this path
 
 try:
     from core.ai_engine import AdvancedChatbot
