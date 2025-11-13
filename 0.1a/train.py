@@ -2,6 +2,8 @@ import json
 import os
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog, simpledialog
+import datetime
+import time
 
 class ModelManager:
     def __init__(self, parent, on_model_change=None):
@@ -46,17 +48,21 @@ class ModelManager:
             'description': description,
             'author': author,
             'version': version,
-            'created_at': str(os.path.getctime(__file__)),
+            'created_at': datetime.datetime.now().isoformat(),
             'qa_groups': []
         }
         
         # Save model file
         model_path = self.get_model_path(name)
-        with open(model_path, 'w') as f:
+        with open(model_path, 'w', encoding='utf-8') as f:
             json.dump(model_data, f, indent=2)
         
         # Refresh available models
         self.load_available_models()
+        
+        # Set as current model
+        self.current_model = name
+        
         return model_data
     
     def load_model(self, name):
@@ -65,10 +71,11 @@ class ModelManager:
             raise ValueError(f"Model '{name}' not found")
         
         model_path = self.get_model_path(name)
-        with open(model_path, 'r') as f:
+        with open(model_path, 'r', encoding='utf-8') as f:
             model_data = json.load(f)
         
         self.current_model = name
+        
         return model_data
     
     def update_model_info(self, name, description="", author="", version=""):
@@ -77,7 +84,7 @@ class ModelManager:
             raise ValueError(f"Model '{name}' not found")
         
         model_path = self.get_model_path(name)
-        with open(model_path, 'r') as f:
+        with open(model_path, 'r', encoding='utf-8') as f:
             model_data = json.load(f)
         
         # Update fields
@@ -88,10 +95,10 @@ class ModelManager:
         if version is not None:
             model_data['version'] = version
         
-        model_data['updated_at'] = str(os.path.getctime(__file__))
+        model_data['updated_at'] = datetime.datetime.now().isoformat()
         
         # Save updated model
-        with open(model_path, 'w') as f:
+        with open(model_path, 'w', encoding='utf-8') as f:
             json.dump(model_data, f, indent=2)
         
         return model_data
@@ -102,7 +109,7 @@ class ModelManager:
         
         # Load existing model data or create new
         if os.path.exists(model_path):
-            with open(model_path, 'r') as f:
+            with open(model_path, 'r', encoding='utf-8') as f:
                 model_data = json.load(f)
         else:
             model_data = {
@@ -110,16 +117,16 @@ class ModelManager:
                 'description': f"Model {name}",
                 'author': "",
                 'version': "1.0.0",
-                'created_at': str(os.path.getctime(__file__)),
+                'created_at': datetime.datetime.now().isoformat(),
                 'qa_groups': []
             }
         
         # Update QA groups
         model_data['qa_groups'] = qa_groups
-        model_data['updated_at'] = str(os.path.getctime(__file__))
+        model_data['updated_at'] = datetime.datetime.now().isoformat()
         
         # Save model file
-        with open(model_path, 'w') as f:
+        with open(model_path, 'w', encoding='utf-8') as f:
             json.dump(model_data, f, indent=2)
         
         return model_data
@@ -140,6 +147,7 @@ class ModelManager:
 class CreateModelDialog:
     def __init__(self, parent, on_create=None):
         self.on_create = on_create
+        self.creating = False  # Flag to prevent multiple creations
         
         self.window = tk.Toplevel(parent)
         self.window.title("Create New Model")
@@ -153,7 +161,11 @@ class CreateModelDialog:
         
         self.setup_ui()
         
-        self.window.bind('<Return>', lambda e: self.create_model())
+        # Bind Enter key only to specific widgets, not the whole window
+        self.name_entry.bind('<Return>', lambda e: self.create_model())
+        self.author_entry.bind('<Return>', lambda e: self.create_model())
+        self.version_entry.bind('<Return>', lambda e: self.create_model())
+        
         self.window.bind('<Escape>', lambda e: self.window.destroy())
         self.window.focus_set()
     
@@ -213,14 +225,15 @@ class CreateModelDialog:
         ).pack(anchor='w')
         
         self.author_var = tk.StringVar()
-        tk.Entry(
+        self.author_entry = tk.Entry(
             author_frame,
             textvariable=self.author_var,
             font=('Arial', 11),
             bg='#1a1a2e',
             fg='white',
             insertbackground='white'
-        ).pack(fill=tk.X, pady=(5, 0))
+        )
+        self.author_entry.pack(fill=tk.X, pady=(5, 0))
         
         # Version
         version_frame = tk.Frame(main_frame, bg='#2d2d5a')
@@ -235,14 +248,15 @@ class CreateModelDialog:
         ).pack(anchor='w')
         
         self.version_var = tk.StringVar(value="1.0.0")
-        tk.Entry(
+        self.version_entry = tk.Entry(
             version_frame,
             textvariable=self.version_var,
             font=('Arial', 11),
             bg='#1a1a2e',
             fg='white',
             insertbackground='white'
-        ).pack(fill=tk.X, pady=(5, 0))
+        )
+        self.version_entry.pack(fill=tk.X, pady=(5, 0))
         
         # Description
         desc_frame = tk.Frame(main_frame, bg='#2d2d5a')
@@ -271,6 +285,18 @@ class CreateModelDialog:
         button_frame = tk.Frame(main_frame, bg='#2d2d5a')
         button_frame.pack(fill=tk.X, pady=(15, 0))
         
+        self.create_button = tk.Button(
+            button_frame,
+            text="💾 Create Model",
+            command=self.create_model,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        )
+        self.create_button.pack(side=tk.RIGHT)
+        
         tk.Button(
             button_frame,
             text="❌ Cancel",
@@ -282,40 +308,47 @@ class CreateModelDialog:
             pady=8
         ).pack(side=tk.RIGHT, padx=(10, 0))
         
-        tk.Button(
-            button_frame,
-            text="💾 Create Model",
-            command=self.create_model,
-            bg='#00ff88',
-            fg='black',
-            font=('Arial', 10, 'bold'),
-            padx=20,
-            pady=8
-        ).pack(side=tk.RIGHT)
-        
         self.window.update_idletasks()
     
     def create_model(self):
-        name = self.name_var.get().strip()
-        description = self.desc_text.get('1.0', tk.END).strip()
-        author = self.author_var.get().strip()
-        version = self.version_var.get().strip()
-        
-        if not name:
-            messagebox.showwarning("Warning", "Please enter a model name.")
-            self.name_entry.focus_set()
+        # Prevent multiple clicks
+        if self.creating:
             return
-        
-        if not version:
-            version = "1.0.0"
+            
+        self.creating = True
+        self.create_button.config(state='disabled', text="Creating...")
+        self.window.update()
         
         try:
+            name = self.name_var.get().strip()
+            description = self.desc_text.get('1.0', tk.END).strip()
+            author = self.author_var.get().strip()
+            version = self.version_var.get().strip()
+            
+            if not name:
+                messagebox.showwarning("Warning", "Please enter a model name.")
+                self.name_entry.focus_set()
+                return
+            
+            if not version:
+                version = "1.0.0"
+            
             if self.on_create:
-                self.on_create(name, description, author, version)
+                # Use after to allow UI to update
+                self.window.after(10, lambda: self.execute_create(name, description, author, version))
+            else:
+                messagebox.showerror("Error", "No create callback defined!")
+        finally:
+            self.creating = False
+            self.create_button.config(state='normal', text="💾 Create Model")
+    
+    def execute_create(self, name, description, author, version):
+        """Execute the create callback and handle the result"""
+        try:
+            self.on_create(name, description, author, version)
             self.window.destroy()
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
-            self.name_entry.focus_set()
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to create model: {str(e)}")
 
 class EditModelDialog:
     def __init__(self, parent, model_data, on_save=None):
@@ -628,6 +661,113 @@ class BranchNameDialog:
             self.on_save(name)
         self.window.destroy()
 
+class QuestionAnswerEditor:
+    def __init__(self, parent, item_type="question", initial_text="", on_save=None):
+        self.on_save = on_save
+        self.item_type = item_type
+        
+        self.window = tk.Toplevel(parent)
+        self.window.title(f"{item_type.title()} Editor")
+        self.window.geometry("500x400")
+        self.window.minsize(400, 300)
+        self.window.configure(bg='#2d2d5a')
+        
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.center_window(parent)
+        
+        self.setup_ui(initial_text)
+        
+        self.window.bind('<Return>', lambda e: self.save())
+        self.window.bind('<Escape>', lambda e: self.window.destroy())
+    
+    def center_window(self, parent):
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
+        self.window.geometry(f"+{x}+{y}")
+    
+    def setup_ui(self, initial_text):
+        main_frame = tk.Frame(self.window, bg='#2d2d5a')
+        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
+        
+        main_frame.columnconfigure(0, weight=1)
+        main_frame.rowconfigure(0, weight=1)
+        main_frame.rowconfigure(1, weight=0)
+        
+        text_container = tk.Frame(main_frame, bg='#2d2d5a')
+        text_container.grid(row=0, column=0, sticky='nsew', pady=(0, 10))
+        text_container.columnconfigure(0, weight=1)
+        text_container.rowconfigure(0, weight=1)
+        
+        self.text_widget = scrolledtext.ScrolledText(
+            text_container, 
+            font=('Arial', 11),
+            bg='#1a1a2e', 
+            fg='white',
+            insertbackground='white',
+            wrap=tk.WORD,
+            padx=10,
+            pady=10
+        )
+        self.text_widget.grid(row=0, column=0, sticky='nsew')
+        self.text_widget.insert('1.0', initial_text)
+        
+        self.text_widget.focus_set()
+        if not initial_text.strip():
+            self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
+            self.text_widget.mark_set(tk.INSERT, "1.0")
+        self.text_widget.see(tk.INSERT)
+        
+        button_frame = tk.Frame(main_frame, bg='#2d2d5a')
+        button_frame.grid(row=1, column=0, sticky='ew', pady=(10, 0))
+        
+        button_frame.columnconfigure(0, weight=1)
+        button_frame.columnconfigure(1, weight=0)
+        button_frame.columnconfigure(2, weight=0)
+        
+        self.status_label = tk.Label(
+            button_frame,
+            text=f"Editing {self.item_type}...",
+            font=('Arial', 9),
+            bg='#2d2d5a',
+            fg='#b0b0d0'
+        )
+        self.status_label.grid(row=0, column=0, sticky='w')
+        
+        tk.Button(
+            button_frame, 
+            text="❌ Cancel", 
+            command=self.window.destroy,
+            bg='#ff4d7d', 
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=5,
+            width=8
+        ).grid(row=0, column=1, padx=(10, 5))
+        
+        tk.Button(
+            button_frame, 
+            text="💾 Save", 
+            command=self.save,
+            bg='#00ff88', 
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=5,
+            width=8
+        ).grid(row=0, column=2, padx=(5, 0))
+    
+    def save(self):
+        text = self.text_widget.get('1.0', tk.END).strip()
+        if text and self.on_save:
+            self.on_save(text)
+            self.window.destroy()
+        elif not text:
+            messagebox.showwarning("Empty", f"Please enter a {self.item_type}.")
+            self.text_widget.focus_set()
+
 class FollowUpEditor:
     def __init__(self, parent, followup_data=None, on_save=None):
         self.on_save = on_save
@@ -903,7 +1043,7 @@ class FollowUpEditor:
         update_frame = tk.Frame(editor_frame, bg='#252547')
         update_frame.grid(row=4, column=0, sticky='ew', padx=15, pady=(0, 12))
         
-        tk.Button(
+        self.update_button = tk.Button(
             update_frame,
             text="💾 Update Node",
             command=self.update_node,
@@ -911,8 +1051,10 @@ class FollowUpEditor:
             fg='black',
             font=('Arial', 11, 'bold'),
             padx=20,
-            pady=8
-        ).pack(side=tk.RIGHT)
+            pady=8,
+            state='disabled'
+        )
+        self.update_button.pack(side=tk.RIGHT)
     
     def setup_action_buttons(self, parent):
         button_frame = tk.Frame(parent, bg='#1a1a2e')
@@ -1006,6 +1148,7 @@ class FollowUpEditor:
             self.node_info.config(text="Select a node to edit its content")
             self.delete_button.config(state='disabled')
             self.edit_name_button.config(state='disabled')
+            self.update_button.config(state='disabled')
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
     
@@ -1018,6 +1161,7 @@ class FollowUpEditor:
             self.node_info.config(text="Select a node to edit its content")
             self.delete_button.config(state='disabled')
             self.edit_name_button.config(state='disabled')
+            self.update_button.config(state='disabled')
             self.question_text.delete('1.0', tk.END)
             self.answer_text.delete('1.0', tk.END)
             return
@@ -1036,6 +1180,7 @@ class FollowUpEditor:
         
         self.delete_button.config(state='normal')
         self.edit_name_button.config(state='normal')
+        self.update_button.config(state='normal')
         
         branch_name = values[0] if values else "Unnamed"
         self.branch_name_display.config(text=f"Branch: {branch_name}")
@@ -1127,113 +1272,6 @@ class FollowUpEditor:
         
         messagebox.showinfo("Success", "Follow-up tree saved successfully!")
         self.window.destroy()
-
-class QuestionAnswerEditor:
-    def __init__(self, parent, item_type="question", initial_text="", on_save=None):
-        self.on_save = on_save
-        self.item_type = item_type
-        
-        self.window = tk.Toplevel(parent)
-        self.window.title(f"{item_type.title()} Editor")
-        self.window.geometry("500x400")
-        self.window.minsize(400, 300)
-        self.window.configure(bg='#2d2d5a')
-        
-        self.window.transient(parent)
-        self.window.grab_set()
-        self.center_window(parent)
-        
-        self.setup_ui(initial_text)
-        
-        self.window.bind('<Return>', lambda e: self.save())
-        self.window.bind('<Escape>', lambda e: self.window.destroy())
-    
-    def center_window(self, parent):
-        self.window.update_idletasks()
-        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
-        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
-        self.window.geometry(f"+{x}+{y}")
-    
-    def setup_ui(self, initial_text):
-        main_frame = tk.Frame(self.window, bg='#2d2d5a')
-        main_frame.pack(fill=tk.BOTH, expand=True, padx=15, pady=15)
-        
-        main_frame.columnconfigure(0, weight=1)
-        main_frame.rowconfigure(0, weight=1)
-        main_frame.rowconfigure(1, weight=0)
-        
-        text_container = tk.Frame(main_frame, bg='#2d2d5a')
-        text_container.grid(row=0, column=0, sticky='nsew', pady=(0, 10))
-        text_container.columnconfigure(0, weight=1)
-        text_container.rowconfigure(0, weight=1)
-        
-        self.text_widget = scrolledtext.ScrolledText(
-            text_container, 
-            font=('Arial', 11),
-            bg='#1a1a2e', 
-            fg='white',
-            insertbackground='white',
-            wrap=tk.WORD,
-            padx=10,
-            pady=10
-        )
-        self.text_widget.grid(row=0, column=0, sticky='nsew')
-        self.text_widget.insert('1.0', initial_text)
-        
-        self.text_widget.focus_set()
-        if not initial_text.strip():
-            self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
-            self.text_widget.mark_set(tk.INSERT, "1.0")
-        self.text_widget.see(tk.INSERT)
-        
-        button_frame = tk.Frame(main_frame, bg='#2d2d5a')
-        button_frame.grid(row=1, column=0, sticky='ew', pady=(10, 0))
-        
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=0)
-        button_frame.columnconfigure(2, weight=0)
-        
-        self.status_label = tk.Label(
-            button_frame,
-            text=f"Editing {self.item_type}...",
-            font=('Arial', 9),
-            bg='#2d2d5a',
-            fg='#b0b0d0'
-        )
-        self.status_label.grid(row=0, column=0, sticky='w')
-        
-        tk.Button(
-            button_frame, 
-            text="❌ Cancel", 
-            command=self.window.destroy,
-            bg='#ff4d7d', 
-            fg='white',
-            font=('Arial', 10, 'bold'),
-            padx=15,
-            pady=5,
-            width=8
-        ).grid(row=0, column=1, padx=(10, 5))
-        
-        tk.Button(
-            button_frame, 
-            text="💾 Save", 
-            command=self.save,
-            bg='#00ff88', 
-            fg='black',
-            font=('Arial', 10, 'bold'),
-            padx=15,
-            pady=5,
-            width=8
-        ).grid(row=0, column=2, padx=(5, 0))
-    
-    def save(self):
-        text = self.text_widget.get('1.0', tk.END).strip()
-        if text and self.on_save:
-            self.on_save(text)
-            self.window.destroy()
-        elif not text:
-            messagebox.showwarning("Empty", f"Please enter a {self.item_type}.")
-            self.text_widget.focus_set()
 
 class GroupEditor:
     def __init__(self, parent, group_data=None, on_save=None):
@@ -1671,8 +1709,9 @@ class TrainingGUI:
         self.current_model = None
         self.qa_groups = []
         self.scroll_frame = None
+        self.model_changing = False  # Flag to prevent recursion
         
-        self.model_manager = ModelManager(root, self.on_model_changed)
+        self.model_manager = ModelManager(root)
         
         self.configure_ttk_styles()
         self.setup_gui()
@@ -1680,7 +1719,10 @@ class TrainingGUI:
         if not self.model_manager.available_models:
             self.root.after(100, self.prompt_create_first_model)
         else:
+            # Load the first model without triggering save dialog
+            self.model_changing = True
             self.load_model(self.model_manager.available_models[0])
+            self.model_changing = False
     
     def configure_ttk_styles(self):
         style = ttk.Style()
@@ -1725,12 +1767,16 @@ class TrainingGUI:
     def create_new_model(self):
         def on_create(name, description, author, version):
             try:
+                # Set flag to prevent save dialog during initial model creation
+                self.model_changing = True
                 self.model_manager.create_model(name, description, author, version)
                 self.load_model(name)
                 self.update_model_dropdown()
+                self.model_changing = False
                 messagebox.showinfo("Success", f"Model '{name}' created successfully!")
-            except ValueError as e:
-                messagebox.showerror("Error", str(e))
+            except Exception as e:
+                self.model_changing = False
+                messagebox.showerror("Error", f"Failed to create model: {str(e)}")
         
         CreateModelDialog(self.root, on_create)
     
@@ -1749,14 +1795,15 @@ class TrainingGUI:
                     )
                     self.update_model_dropdown()
                     messagebox.showinfo("Success", "Model information updated successfully!")
-                except ValueError as e:
-                    messagebox.showerror("Error", str(e))
+                except Exception as e:
+                    messagebox.showerror("Error", f"Failed to update model: {str(e)}")
             
             EditModelDialog(self.root, model_data, on_save)
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load model: {str(e)}")
     
     def load_model(self, model_name):
+        """Load a model without triggering the save dialog"""
         try:
             model_data = self.model_manager.load_model(model_name)
             self.qa_groups = model_data.get('qa_groups', [])
@@ -1764,13 +1811,13 @@ class TrainingGUI:
             if hasattr(self, 'scroll_frame'):
                 self.refresh_groups()
             self.update_model_dropdown()
-        except ValueError as e:
-            messagebox.showerror("Error", str(e))
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to load model: {str(e)}")
     
     def save_current_model(self):
         if not self.current_model:
             messagebox.showwarning("Warning", "No model selected. Please create or load a model first.")
-            return
+            return False
         
         try:
             self.model_manager.save_model(self.current_model, self.qa_groups)
@@ -1779,19 +1826,44 @@ class TrainingGUI:
             messagebox.showerror("Error", f"Failed to save model: {str(e)}")
             return False
     
-    def on_model_changed(self, model_name):
-        if model_name and model_name != self.current_model:
-            if self.current_model and self.qa_groups:
-                if messagebox.askyesno("Save Changes", f"Save changes to current model '{self.current_model}' before switching?"):
-                    self.save_current_model()
+    def on_model_switch_request(self, model_name):
+        """Handle model switching with save confirmation"""
+        if self.model_changing:
+            return
             
+        if model_name and model_name != self.current_model:
+            # Check if we have unsaved changes
+            has_unsaved_changes = bool(self.current_model and self.qa_groups)
+            
+            if has_unsaved_changes:
+                response = messagebox.askyesnocancel(
+                    "Save Changes", 
+                    f"Save changes to current model '{self.current_model}' before switching?"
+                )
+                
+                if response is None:  # Cancel
+                    # Reset combobox to current model
+                    self.model_combobox.set(self.current_model)
+                    return
+                elif response:  # Yes
+                    if not self.save_current_model():
+                        # Save failed, don't switch
+                        self.model_combobox.set(self.current_model)
+                        return
+            
+            # Proceed with model switch
+            self.model_changing = True
             self.load_model(model_name)
+            self.model_changing = False
     
     def update_model_dropdown(self):
         if hasattr(self, 'model_combobox'):
+            current_selection = self.model_combobox.get()
             self.model_combobox['values'] = self.model_manager.available_models
             if self.current_model:
                 self.model_combobox.set(self.current_model)
+            elif self.model_manager.available_models:
+                self.model_combobox.set(self.model_manager.available_models[0])
     
     def setup_gui(self):
         main_frame = tk.Frame(self.root, bg='#1a1a2e')
@@ -1840,8 +1912,11 @@ class TrainingGUI:
         self.model_combobox.pack(side=tk.LEFT, padx=(0, 10))
         if self.current_model:
             self.model_combobox.set(self.current_model)
+        elif self.model_manager.available_models:
+            self.model_combobox.set(self.model_manager.available_models[0])
+            
         self.model_combobox.bind('<<ComboboxSelected>>', 
-                               lambda e: self.on_model_changed(self.model_combobox.get()))
+                               lambda e: self.on_model_switch_request(self.model_combobox.get()))
         
         tk.Button(
             model_frame,
@@ -2000,6 +2075,7 @@ class TrainingGUI:
         scrollbar.pack(side=tk.RIGHT, fill=tk.Y)
         
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
+        self.scroll_frame.bind("<MouseWheel>", self.on_mousewheel)
     
     def on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -2123,8 +2199,8 @@ class TrainingGUI:
             
         def on_save(group_data):
             self.qa_groups.append(group_data)
-            self.save_current_model()
-            self.refresh_groups()
+            if self.save_current_model():
+                self.refresh_groups()
         
         GroupEditor(self.root, on_save=on_save)
     
@@ -2135,8 +2211,8 @@ class TrainingGUI:
             
         def on_save(group_data):
             self.qa_groups[index] = group_data
-            self.save_current_model()
-            self.refresh_groups()
+            if self.save_current_model():
+                self.refresh_groups()
         
         GroupEditor(self.root, self.qa_groups[index], on_save)
     
@@ -2147,8 +2223,8 @@ class TrainingGUI:
             
         if messagebox.askyesno("Confirm", "Delete this group?"):
             self.qa_groups.pop(index)
-            self.save_current_model()
-            self.refresh_groups()
+            if self.save_current_model():
+                self.refresh_groups()
     
     def import_json(self):
         if not self.current_model:
@@ -2158,13 +2234,19 @@ class TrainingGUI:
         filename = filedialog.askopenfilename(filetypes=[("JSON files", "*.json")])
         if filename:
             try:
-                with open(filename, 'r') as f:
+                with open(filename, 'r', encoding='utf-8') as f:
                     data = json.load(f)
                 
-                for i, qa in enumerate(data):
+                # Handle both array format and object format
+                if isinstance(data, list):
+                    imported_groups = data
+                else:
+                    imported_groups = [data]
+                
+                for i, qa in enumerate(imported_groups):
                     self.qa_groups.append({
-                        'group_name': f"Imported {i+1}",
-                        'group_description': "Imported from JSON",
+                        'group_name': qa.get('group_name', f"Imported {i+1}"),
+                        'group_description': qa.get('group_description', "Imported from JSON"),
                         'questions': qa.get('questions', []),
                         'answers': qa.get('answers', []),
                         'topic': qa.get('topic', 'general'),
@@ -2172,14 +2254,18 @@ class TrainingGUI:
                         'follow_ups': qa.get('follow_ups', [])
                     })
                 
-                self.save_current_model()
-                self.refresh_groups()
-                messagebox.showinfo("Success", f"Imported {len(data)} groups")
+                if self.save_current_model():
+                    self.refresh_groups()
+                    messagebox.showinfo("Success", f"Imported {len(imported_groups)} groups")
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Import failed: {str(e)}")
     
     def export_json(self):
+        if not self.qa_groups:
+            messagebox.showwarning("Warning", "No data to export.")
+            return
+            
         filename = filedialog.asksaveasfilename(
             defaultextension=".json",
             filetypes=[("JSON files", "*.json")]
@@ -2189,15 +2275,17 @@ class TrainingGUI:
                 export_data = []
                 for group in self.qa_groups:
                     export_data.append({
+                        'group_name': group['group_name'],
+                        'group_description': group.get('group_description', ''),
                         'questions': group['questions'],
                         'answers': group['answers'],
                         'topic': group['topic'],
                         'priority': group['priority'],
-                        'follow_ups': group['follow_ups']
+                        'follow_ups': group.get('follow_ups', [])
                     })
                 
-                with open(filename, 'w') as f:
-                    json.dump(export_data, f, indent=2)
+                with open(filename, 'w', encoding='utf-8') as f:
+                    json.dump(export_data, f, indent=2, ensure_ascii=False)
                 
                 messagebox.showinfo("Success", "Data exported successfully")
                 
