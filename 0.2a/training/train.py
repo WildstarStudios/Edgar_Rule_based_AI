@@ -2285,7 +2285,7 @@ class TrainingGUI:
                     })
                 
                 with open(filename, 'w', encoding='utf-8') as f:
-                    json.dump(export_data, f, indent=2, ensure_ascii=False)
+                    json.dump(export_data, f, indent=2)
                 
                 messagebox.showinfo("Success", "Data exported successfully")
                 
