@@ -133,6 +133,10 @@ class CreateModelDialog(BaseDialog):
         )
         self.desc_text.grid(row=3, column=1, sticky='nsew', pady=(0, 15))
         
+        # Bind Shift+Enter for new line in description
+        self.desc_text.bind('<Shift-Return>', lambda e: "break")  # Allow default behavior
+        self.desc_text.bind('<Return>', self.on_description_enter)
+        
         # Buttons frame
         button_frame = tk.Frame(self.window, bg='#2d2d5a')
         button_frame.grid(row=2, column=0, sticky='e', padx=20, pady=(0, 20))
@@ -162,6 +166,14 @@ class CreateModelDialog(BaseDialog):
         
         # Configure content frame row weights
         content_frame.grid_rowconfigure(3, weight=1)
+    
+    def on_description_enter(self, event):
+        """Handle Enter key in description - submit on Enter, new line on Shift+Enter"""
+        if event.state & 0x1:  # Shift key is pressed
+            return  # Allow default behavior (new line)
+        else:
+            self.create_model()
+            return "break"  # Prevent default behavior
     
     def create_model(self):
         if self.creating:
@@ -308,6 +320,10 @@ class EditModelDialog(BaseDialog):
         )
         self.desc_text.grid(row=3, column=1, sticky='nsew', pady=(0, 15))
         
+        # Bind Shift+Enter for new line in description
+        self.desc_text.bind('<Shift-Return>', lambda e: "break")
+        self.desc_text.bind('<Return>', self.on_description_enter)
+        
         # Buttons frame
         button_frame = tk.Frame(self.window, bg='#2d2d5a')
         button_frame.grid(row=2, column=0, sticky='e', padx=20, pady=(0, 20))
@@ -335,6 +351,14 @@ class EditModelDialog(BaseDialog):
         ).pack(side=tk.RIGHT)
         
         content_frame.grid_rowconfigure(3, weight=1)
+    
+    def on_description_enter(self, event):
+        """Handle Enter key in description - submit on Enter, new line on Shift+Enter"""
+        if event.state & 0x1:  # Shift key is pressed
+            return  # Allow default behavior (new line)
+        else:
+            self.save_model()
+            return "break"  # Prevent default behavior
     
     def load_data(self):
         self.name_var.set(self.model_data.get('name', ''))
@@ -464,9 +488,8 @@ class QuestionAnswerEditor(BaseDialog):
         self.setup_ui(initial_text)
         self.text_widget.focus_set()
         
-        if not initial_text.strip():
-            self.text_widget.tag_add(tk.SEL, "1.0", tk.END)
-            self.text_widget.mark_set(tk.INSERT, "1.0")
+        # Set cursor to end instead of selecting all text
+        self.text_widget.mark_set(tk.INSERT, tk.END)
         self.text_widget.see(tk.INSERT)
     
     def setup_ui(self, initial_text):
@@ -487,6 +510,10 @@ class QuestionAnswerEditor(BaseDialog):
         self.text_widget.grid(row=0, column=0, sticky='nsew', padx=15, pady=15)
         self.text_widget.insert('1.0', initial_text)
         
+        # Bind Shift+Enter for new line, Enter for submit
+        self.text_widget.bind('<Shift-Return>', self.on_shift_enter)
+        self.text_widget.bind('<Return>', self.on_enter)
+        
         # Button frame
         button_frame = tk.Frame(self.window, bg='#2d2d5a')
         button_frame.grid(row=1, column=0, sticky='ew', padx=15, pady=(0, 15))
@@ -494,7 +521,7 @@ class QuestionAnswerEditor(BaseDialog):
         
         self.status_label = tk.Label(
             button_frame,
-            text=f"Editing {self.item_type}...",
+            text=f"Editing {self.item_type}... (Shift+Enter for new line, Enter to save)",
             font=('Arial', 9),
             bg='#2d2d5a',
             fg='#b0b0d0'
@@ -524,6 +551,16 @@ class QuestionAnswerEditor(BaseDialog):
             pady=5,
             width=8
         ).grid(row=0, column=2)
+    
+    def on_shift_enter(self, event):
+        """Handle Shift+Enter - insert new line"""
+        self.text_widget.insert(tk.INSERT, '\n')
+        return 'break'
+    
+    def on_enter(self, event):
+        """Handle Enter - submit"""
+        self.save()
+        return 'break'
     
     def save(self):
         text = self.text_widget.get('1.0', tk.END).strip()
@@ -639,7 +676,10 @@ class FollowUpEditor(BaseDialog):
         style.map('Treeview', background=[('selected', '#6c63ff')])
         
         self.tree = ttk.Treeview(tree_container, show='tree', style="Treeview")
-        tree_scroll = ttk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview)
+        
+        # Use custom scrollbar
+        tree_scroll = tk.Scrollbar(tree_container, orient=tk.VERTICAL, command=self.tree.yview,
+                                  bg='#2d2d5a', troughcolor='#1a1a2e', activebackground='#6c63ff')
         self.tree.configure(yscrollcommand=tree_scroll.set)
         
         self.tree.grid(row=0, column=0, sticky='nsew')
@@ -749,6 +789,10 @@ class FollowUpEditor(BaseDialog):
         )
         self.question_text.grid(row=1, column=0, sticky='nsew')
         
+        # Bind Shift+Enter for new line in question
+        self.question_text.bind('<Shift-Return>', self.on_shift_enter)
+        self.question_text.bind('<Return>', self.on_enter)
+        
         # Answer editor
         a_frame = tk.Frame(editor_frame, bg='#252547')
         a_frame.grid(row=4, column=0, sticky='nsew', padx=15, pady=(0, 10))
@@ -776,6 +820,10 @@ class FollowUpEditor(BaseDialog):
         )
         self.answer_text.grid(row=1, column=0, sticky='nsew')
         
+        # Bind Shift+Enter for new line in answer
+        self.answer_text.bind('<Shift-Return>', self.on_shift_enter)
+        self.answer_text.bind('<Return>', self.on_enter)
+        
         # Update button
         update_frame = tk.Frame(editor_frame, bg='#252547')
         update_frame.grid(row=5, column=0, sticky='e', padx=15, pady=(0, 12))
@@ -792,6 +840,16 @@ class FollowUpEditor(BaseDialog):
             state='disabled'
         )
         self.update_button.pack(side=tk.RIGHT)
+    
+    def on_shift_enter(self, event):
+        """Handle Shift+Enter - insert new line"""
+        event.widget.insert(tk.INSERT, '\n')
+        return 'break'
+    
+    def on_enter(self, event):
+        """Handle Enter - move focus to update button"""
+        self.update_button.focus_set()
+        return 'break'
     
     def setup_action_buttons(self, parent):
         button_frame = tk.Frame(parent, bg='#1a1a2e')
@@ -1064,7 +1122,7 @@ class GroupEditor(BaseDialog):
         ).grid(row=0, column=0, sticky='w', pady=(0, 8))
         
         self.name_var = tk.StringVar(value="New QA Group")
-        name_entry = tk.Entry(
+        self.name_entry = tk.Entry(
             frame,
             textvariable=self.name_var,
             font=('Arial', 10),
@@ -1072,7 +1130,13 @@ class GroupEditor(BaseDialog):
             fg='white',
             insertbackground='white'
         )
-        name_entry.grid(row=0, column=1, sticky='ew', pady=(0, 8))
+        self.name_entry.grid(row=0, column=1, sticky='ew', pady=(0, 8))
+        
+        # Fix: Set cursor to end instead of selecting all text
+        self.name_entry.focus_set()
+        self.name_entry.icursor(tk.END)
+        
+        self.name_entry.bind('<Return>', lambda e: self.save_group())
         
         tk.Label(
             frame,
@@ -1083,7 +1147,7 @@ class GroupEditor(BaseDialog):
         ).grid(row=1, column=0, sticky='w', pady=(0, 8))
         
         self.desc_var = tk.StringVar()
-        desc_entry = tk.Entry(
+        self.desc_entry = tk.Entry(
             frame,
             textvariable=self.desc_var,
             font=('Arial', 10),
@@ -1091,7 +1155,8 @@ class GroupEditor(BaseDialog):
             fg='white',
             insertbackground='white'
         )
-        desc_entry.grid(row=1, column=1, sticky='ew')
+        self.desc_entry.grid(row=1, column=1, sticky='ew')
+        self.desc_entry.bind('<Return>', lambda e: self.save_group())
         
         return frame
     
@@ -1155,10 +1220,11 @@ class GroupEditor(BaseDialog):
         )
         listbox.grid(row=0, column=0, sticky='nsew')
         
-        scrollbar = tk.Scrollbar(list_container, orient=tk.VERTICAL)
-        scrollbar.grid(row=0, column=1, sticky='ns')
+        # Use custom scrollbar
+        scrollbar = tk.Scrollbar(list_container, orient=tk.VERTICAL, command=listbox.yview,
+                                bg='#2d2d5a', troughcolor='#1a1a2e', activebackground='#6c63ff')
         listbox.config(yscrollcommand=scrollbar.set)
-        scrollbar.config(command=listbox.yview)
+        scrollbar.grid(row=0, column=1, sticky='ns')
         
         actions = tk.Frame(frame, bg='#252547')
         actions.grid(row=2, column=0, sticky='ew', padx=10, pady=(0, 8))
@@ -1392,14 +1458,7 @@ class GroupEditor(BaseDialog):
             self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
     
     def save_group(self):
-        if self.questions_list.size() == 0:
-            messagebox.showerror("Error", "At least one question is required.")
-            return
-        
-        if self.answers_list.size() == 0:
-            messagebox.showerror("Error", "At least one answer is required.")
-            return
-        
+        # Remove requirement for questions and answers
         group_data = {
             'group_name': self.name_var.get(),
             'group_description': self.desc_var.get(),
@@ -1420,7 +1479,7 @@ class TrainingGUI:
         self.root = root
         self.root.title("Edgar AI Training")
         self.root.geometry("1200x800")
-        self.root.minsize(1000, 600)
+        self.root.minsize(350, 300)
         self.root.configure(bg='#1a1a2e')
         
         # Initialize backend engine
@@ -1430,6 +1489,16 @@ class TrainingGUI:
         self.scroll_frame = None
         self.model_changing = False
         self.group_cards = []
+        
+        # Responsive layout variables
+        self.current_columns = 4
+        self.min_card_width = 280
+        self.card_padding = 16  # 8px on each side
+        
+        # Search optimization
+        self.search_cache = {}
+        self.last_search_term = ""
+        self.last_search_mode = ""
         
         self.configure_ttk_styles()
         self.setup_gui()
@@ -1688,26 +1757,31 @@ class TrainingGUI:
             insertbackground='white',
             font=('Arial', 9)
         )
-        search_entry.pack(side=tk.LEFT, padx=(5, 15))
+        search_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # Search filter dropdown
+        tk.Label(
+            search_frame,
+            text="Filter:",
+            bg='#1a1a2e',
+            fg='white',
+            font=('Arial', 9)
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.search_mode = tk.StringVar(value="all")
+        search_filter = ttk.Combobox(
+            search_frame,
+            textvariable=self.search_mode,
+            values=["All", "Name", "Description", "Questions", "Answers"],
+            state="readonly",
+            width=12,
+            style='Dark.TCombobox'
+        )
+        search_filter.pack(side=tk.LEFT, padx=(0, 15))
+        
+        # Bind search events for real-time filtering
         self.search_var.trace('w', self.on_search)
-        
-        self.search_mode = tk.StringVar(value="both")
-        mode_frame = tk.Frame(search_frame, bg='#1a1a2e')
-        mode_frame.pack(side=tk.LEFT)
-        
-        for text, value in [("Both", "both"), ("Name", "name"), ("Desc", "description")]:
-            rb = tk.Radiobutton(
-                mode_frame,
-                text=text,
-                variable=self.search_mode,
-                value=value,
-                bg='#1a1a2e',
-                fg='white',
-                selectcolor='#6c63ff',
-                font=('Arial', 9),
-                command=self.on_search
-            )
-            rb.pack(side=tk.LEFT, padx=(0, 8))
+        self.search_mode.trace('w', self.on_search)
         
         # Action buttons
         actions = tk.Frame(toolbar, bg='#1a1a2e')
@@ -1744,7 +1818,7 @@ class TrainingGUI:
         ).pack(side=tk.LEFT)
     
     def setup_groups_grid(self, parent):
-        """Setup groups display as a fixed 4-column grid"""
+        """Setup responsive groups display with dynamic column layout"""
         container = tk.Frame(parent, bg='#1a1a2e')
         container.grid(row=2, column=0, sticky='nsew')
         container.grid_columnconfigure(0, weight=1)
@@ -1752,7 +1826,16 @@ class TrainingGUI:
         
         self.canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
         
-        scrollbar = ttk.Scrollbar(container, orient=tk.VERTICAL, command=self.canvas.yview)
+        # Use custom scrollbar with theme colors
+        self.scrollbar = tk.Scrollbar(
+            container, 
+            orient=tk.VERTICAL, 
+            command=self.canvas.yview,
+            bg='#2d2d5a', 
+            troughcolor='#1a1a2e', 
+            activebackground='#6c63ff',
+            width=16
+        )
         
         # Main scrollable frame
         self.scroll_frame = tk.Frame(self.canvas, bg='#1a1a2e')
@@ -1762,50 +1845,87 @@ class TrainingGUI:
         )
         
         self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=scrollbar.set)
+        self.canvas.configure(yscrollcommand=self.scrollbar.set)
         
         self.canvas.grid(row=0, column=0, sticky='nsew')
-        scrollbar.grid(row=0, column=1, sticky='ns')
+        self.scrollbar.grid(row=0, column=1, sticky='ns')
         
         # Groups container inside scroll frame
         self.groups_container = tk.Frame(self.scroll_frame, bg='#1a1a2e')
         self.groups_container.pack(fill='both', expand=True, padx=10, pady=10)
         
-        # Configure fixed 4-column layout
-        for i in range(4):
-            self.groups_container.grid_columnconfigure(i, weight=1, uniform="col")
-        
+        # Bind resize event for responsive layout
+        self.canvas.bind("<Configure>", self.on_canvas_resize)
         self.canvas.bind("<MouseWheel>", self.on_mousewheel)
         self.scroll_frame.bind("<MouseWheel>", self.on_mousewheel)
         self.groups_container.bind("<MouseWheel>", self.on_mousewheel)
+        
+        # Bind to update scroll region when window is fully loaded
+        self.root.after(100, self.update_scroll_region)
+    
+    def update_scroll_region(self):
+        """Update scroll region after window is fully loaded"""
+        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+    
+    def on_canvas_resize(self, event):
+        """Handle canvas resize to adjust grid columns"""
+        if hasattr(self, 'groups_container') and self.groups_container.winfo_children():
+            self.refresh_groups_layout()
+        # Update scroll region after resize
+        self.root.after(50, self.update_scroll_region)
     
     def on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
     
     def on_search(self, *args):
-        self.refresh_groups()
+        """Optimized real-time search with caching"""
+        search_term = self.search_var.get().lower()
+        search_mode = self.search_mode.get().lower()
+        
+        # Use cache if search hasn't changed
+        cache_key = f"{search_term}|{search_mode}"
+        if cache_key in self.search_cache:
+            filtered_groups = self.search_cache[cache_key]
+        else:
+            # Perform search
+            if search_mode == "all":
+                filtered_groups = self.engine.search_qa_groups(search_term, "both")
+            else:
+                filtered_groups = self.engine.search_qa_groups(search_term, search_mode)
+            
+            # Cache results
+            self.search_cache[cache_key] = filtered_groups
+            # Limit cache size
+            if len(self.search_cache) > 50:
+                self.search_cache.pop(next(iter(self.search_cache)))
+        
+        self.display_filtered_groups(filtered_groups)
     
-    def refresh_groups(self):
-        """Refresh groups display with fixed 4-column grid layout"""
+    def display_filtered_groups(self, filtered_groups):
+        """Display filtered groups without full refresh"""
         # Clear existing cards
         for card in self.group_cards:
             card.destroy()
         self.group_cards = []
         
-        search_term = self.search_var.get().lower()
-        search_mode = self.search_mode.get()
+        # Calculate responsive columns
+        columns = self.calculate_columns()
         
-        # Use backend engine for search
-        filtered_groups = self.engine.search_qa_groups(search_term, search_mode)
+        # Clear and reconfigure grid
+        for widget in self.groups_container.grid_slaves():
+            widget.grid_forget()
         
-        # Create group cards
+        for i in range(columns):
+            self.groups_container.grid_columnconfigure(i, weight=1)
+        
+        # Create group cards for filtered groups
         for i, group in enumerate(filtered_groups):
             card = self.create_group_card(group)
             self.group_cards.append(card)
             
-            # Arrange in 4-column grid
-            row = i // 4
-            col = i % 4
+            # Arrange in responsive grid
+            row = i // columns
+            col = i % columns
             card.grid(
                 row=row, 
                 column=col, 
@@ -1814,14 +1934,79 @@ class TrainingGUI:
                 pady=8
             )
         
-        # Update stats from backend
-        stats = self.engine.get_stats()
-        self.stats_vars["Groups"].set(str(stats['groups']))
-        self.stats_vars["Questions"].set(str(stats['questions']))
-        self.stats_vars["Answers"].set(str(stats['answers']))
+        self.current_columns = columns
+        
+        # Update stats for filtered results
+        total_questions = sum(len(g['questions']) for g in filtered_groups)
+        total_answers = sum(len(g['answers']) for g in filtered_groups)
+        
+        self.stats_vars["Groups"].set(str(len(filtered_groups)))
+        self.stats_vars["Questions"].set(str(total_questions))
+        self.stats_vars["Answers"].set(str(total_answers))
         
         # Update scroll region
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.update_scroll_region()
+    
+    def calculate_columns(self):
+        """Calculate optimal number of columns based on available width"""
+        if not hasattr(self, 'canvas') or not self.canvas.winfo_exists():
+            return 4
+        
+        canvas_width = self.canvas.winfo_width()
+        if canvas_width <= 1:  # Canvas not yet rendered
+            return 4
+        
+        # Calculate how many cards fit with minimum width and padding
+        available_width = canvas_width - 40  # Account for container padding
+        card_total_width = self.min_card_width + self.card_padding
+        max_columns = max(1, available_width // card_total_width)
+        
+        return max_columns
+    
+    def refresh_groups_layout(self):
+        """Refresh just the layout without recreating cards"""
+        if not self.group_cards:
+            return
+            
+        columns = self.calculate_columns()
+        
+        # Clear current grid
+        for widget in self.groups_container.grid_slaves():
+            widget.grid_forget()
+        
+        # Reconfigure grid columns
+        for i in range(columns):
+            self.groups_container.grid_columnconfigure(i, weight=1)
+        
+        # Rearrange existing cards
+        for i, card in enumerate(self.group_cards):
+            row = i // columns
+            col = i % columns
+            card.grid(
+                row=row, 
+                column=col, 
+                sticky='nsew', 
+                padx=8, 
+                pady=8
+            )
+        
+        self.current_columns = columns
+        self.update_scroll_region()
+    
+    def refresh_groups(self):
+        """Refresh groups display with responsive layout"""
+        # Clear cache on full refresh
+        self.search_cache.clear()
+        
+        search_term = self.search_var.get().lower()
+        search_mode = self.search_mode.get().lower()
+        
+        if search_mode == "all":
+            filtered_groups = self.engine.search_qa_groups(search_term, "both")
+        else:
+            filtered_groups = self.engine.search_qa_groups(search_term, search_mode)
+        
+        self.display_filtered_groups(filtered_groups)
     
     def create_group_card(self, group):
         """Create a modern group card widget with improved layout"""
@@ -1830,7 +2015,7 @@ class TrainingGUI:
             bg='#252547', 
             relief='raised', 
             bd=1,
-            width=280,
+            width=self.min_card_width,
             height=140
         )
         card.pack_propagate(False)

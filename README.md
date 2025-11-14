@@ -10,11 +10,13 @@ In the future, an official model and module store may provide a safe, verified s
 
 \# Downloadable Builds
 
-* stable builds will be compiled with Nuitka.
-* for speed development builds will be packaged with PyInstaller.
-* https://drive.proton.me/urls/383FR1B88W#nOsm7CsYAyWt
-* only nuitka build currently and export json button is broken currently.
-* for now copy from teh models folder manualy to get it working with chat. \*\*fixed\*\*
+\- stable builds will be compiled with Nuitka.
+
+\- for speed development builds will be packaged with PyInstaller.
+
+\- https://drive.proton.me/urls/383FR1B88W#nOsm7CsYAyWt
+
+
 
 
 
@@ -40,47 +42,55 @@ In the future, an official model and module store may provide a safe, verified s
 
 \# Modules
 
-\- web search ❌
+\- Web Search ❌
 
-\- weather check ❌
+\- Weather Search ❌
 
-\- joke engine ❌
+\- Joke Engine ❌
 
-\- recipie engine ❌
+\- Recipe Engine ❌
+
+
+
+\# Planned System Enhancements
+
+\- Search Training
+
+\- Topic Context System
+
+\- Rule Network Visualizer
+
+\- Custom Binary format
+
+\- .rbm (rule based model)
+
+\- .rbmd (rule based model data)
+
+\- Search format instead of load.
+
+
+
+\# Ideas
+
+\- Deep Search
+
+\- Free Api
+
+\- Parrot Mascot
+
+\- Online app
+
+\- Translation System
 
 
 
 \# Deploy
 
-\- Edgar 1.0  ❌
+\- Edgar Model 1.0
 
-\- EdgarAi.org ❌
+\- Website edgarai.org
 
-\- models ❌
+\- Open source models
 
-\- subscription for newest models ❌
-
-
-
-\# planned systems from failed attempts
-
-\- search training ❌
-
-\- topic usage system ❌
-
-\- network visualizer ❌
-
-\- binary format ❌
-
-
-
-\# ideas to implement
-
-\- deep search ❌
-
-\- free API ❌
-
-\- mascot for GUI ❌
-
-\- new online app ❌
+\- Subscription for newest models on website
 

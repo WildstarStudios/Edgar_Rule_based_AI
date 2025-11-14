@@ -172,19 +172,36 @@ class TrainingEngine:
         return self.qa_groups
     
     def search_qa_groups(self, search_term, search_mode="both"):
-        """Search QA groups based on criteria"""
+        """Enhanced search QA groups based on criteria including questions and answers"""
         if not search_term:
             return self.qa_groups
         
         filtered_groups = []
+        search_term_lower = search_term.lower()
+        
         for group in self.qa_groups:
+            match = False
+            
             if search_mode == "both":
-                match = (search_term in group['group_name'].lower() or 
-                        search_term in group.get('group_description', '').lower())
+                # Search in name, description, questions, and answers
+                match = (search_term_lower in group['group_name'].lower() or 
+                        search_term_lower in group.get('group_description', '').lower() or
+                        any(search_term_lower in q.lower() for q in group.get('questions', [])) or
+                        any(search_term_lower in a.lower() for a in group.get('answers', [])))
+            
             elif search_mode == "name":
-                match = search_term in group['group_name'].lower()
-            else:
-                match = search_term in group.get('group_description', '').lower()
+                match = search_term_lower in group['group_name'].lower()
+            
+            elif search_mode == "description":
+                match = search_term_lower in group.get('group_description', '').lower()
+            
+            elif search_mode == "questions":
+                # Search only in questions
+                match = any(search_term_lower in q.lower() for q in group.get('questions', []))
+            
+            elif search_mode == "answers":
+                # Search only in answers
+                match = any(search_term_lower in a.lower() for a in group.get('answers', []))
             
             if match:
                 filtered_groups.append(group)
