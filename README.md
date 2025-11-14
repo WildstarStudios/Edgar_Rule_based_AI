@@ -16,7 +16,7 @@
     * Sentence Matching ✅
     * Basic Context System ✅
     * Follow up Tree System ✅
-    * Multi Q\&A System ✅
+    * Multi Q&A System ✅
     * Basic Network Visualizer ✅
 	
     # 0.2a - quality of life improvements
@@ -26,6 +26,14 @@
     * add ability to select model in chat Gui ✅
     * enforce group name requirement ✅
     * New Network Visualizer ✅
+
+    # 0.3a - Modularization and Accuracy Improvements
+    * module system ❌
+    * Word Variant System ❌
+    * Group Sections Upgrade ❌
+    * make WebUi ❌
+    * Make login page ❌
+
 
 
 # To-Do

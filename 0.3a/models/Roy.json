@@ -1,0 +1,23 @@
+{
+  "name": "Roy",
+  "description": "",
+  "author": "",
+  "version": "1.0.0",
+  "created_at": "2025-11-14T10:53:39.029039",
+  "qa_groups": [
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "Hi"
+      ],
+      "answers": [
+        "Hello"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    }
+  ],
+  "updated_at": "2025-11-14T10:53:55.299955"
+}
