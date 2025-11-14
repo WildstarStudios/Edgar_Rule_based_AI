@@ -6,8 +6,8 @@ class ModelManager:
     def __init__(self, parent, on_model_change=None):
         self.parent = parent
         self.on_model_change = on_model_change
-        # Save models in the training folder (one level above core)
-        self.models_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
+        # Changed to use the same models folder as 0.1a
+        self.models_folder = "models"
         self.current_model = None
         self.available_models = []
         
@@ -231,15 +231,25 @@ class TrainingEngine:
         return count
     
     def import_from_json(self, filename):
-        """Import QA groups from JSON file"""
+        """Import QA groups from JSON file - supports both full model format and QA groups only"""
         with open(filename, 'r', encoding='utf-8') as f:
             data = json.load(f)
         
         imported_groups = []
-        if isinstance(data, list):
+        
+        # Check if it's a full model JSON or just QA groups
+        if isinstance(data, dict) and 'qa_groups' in data:
+            # Full model format - extract QA groups
+            imported_groups = data['qa_groups']
+            print(f"Imported {len(imported_groups)} QA groups from full model JSON")
+        elif isinstance(data, list):
+            # Direct QA groups format
             imported_groups = data
+            print(f"Imported {len(imported_groups)} QA groups from QA groups JSON")
         else:
+            # Single QA group or unexpected format
             imported_groups = [data]
+            print(f"Imported 1 QA group from JSON")
         
         for i, qa in enumerate(imported_groups):
             self.qa_groups.append({
@@ -254,8 +264,43 @@ class TrainingEngine:
         
         return len(imported_groups)
     
-    def export_to_json(self, filename):
-        """Export QA groups to JSON file"""
+    def export_to_json(self, filename=None):
+        """Export full model to JSON file with automatic filename generation"""
+        if not self.current_model:
+            raise ValueError("No model loaded for export")
+        
+        # Generate automatic filename if not provided
+        if filename is None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{self.current_model}_{timestamp}.json"
+        # Ensure .json extension if not present
+        elif not filename.endswith('.json'):
+            filename += '.json'
+        
+        # Get the full model data
+        model_data = self.model_manager.load_model(self.current_model)
+        
+        # Update with current QA groups (in case there are unsaved changes)
+        model_data['qa_groups'] = self.qa_groups
+        model_data['exported_at'] = datetime.datetime.now().isoformat()
+        
+        with open(filename, 'w', encoding='utf-8') as f:
+            json.dump(model_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"Exported full model '{self.current_model}' to {filename}")
+        return filename
+    
+    def export_qa_groups_only(self, filename=None):
+        """Export only QA groups to JSON (for backward compatibility)"""
+        if not self.current_model:
+            raise ValueError("No model loaded for export")
+        
+        if filename is None:
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            filename = f"{self.current_model}_qa_groups_{timestamp}.json"
+        elif not filename.endswith('.json'):
+            filename += '.json'
+        
         export_data = []
         for group in self.qa_groups:
             export_data.append({
@@ -269,7 +314,10 @@ class TrainingEngine:
             })
         
         with open(filename, 'w', encoding='utf-8') as f:
-            json.dump(export_data, f, indent=2)
+            json.dump(export_data, f, indent=2, ensure_ascii=False)
+        
+        print(f"Exported QA groups from '{self.current_model}' to {filename}")
+        return filename
     
     @property
     def available_models(self):

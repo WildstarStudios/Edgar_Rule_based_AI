@@ -30,7 +30,7 @@ class AdvancedChatbot:
         self.auto_start_chat = kwargs.get('auto_start_chat', 
                                         self.config.getboolean('ai_engine', 'auto_start_chat', fallback=True))
         self.answer_confidence_requirement = kwargs.get('answer_confidence_requirement',
-                                                      self.config.getfloat('ai_engine', 'answer_confidence_requirement', fallback=0.0))
+                                                      self.config.getfloat('ai_engine', 'answer_confidence_requirement', fallback=0.85))
         self.speed_limit = kwargs.get('speed_limit', 
                                     self.config.getboolean('ai_engine', 'speed_limit', fallback=True))
         
@@ -129,7 +129,7 @@ class AdvancedChatbot:
                 'additional_info_speed': '10000',
                 'letter_streaming': 'False',
                 'auto_start_chat': 'True',
-                'answer_confidence_requirement': '0.0',
+                'answer_confidence_requirement': '0.85',
                 'speed_limit': 'True'
             }
         }
@@ -152,7 +152,6 @@ class AdvancedChatbot:
     
     def save_configuration(self):
         """Save current configuration to file"""
-        self.config.set('ai_engine', 'enable_model_selection', str(self.enable_model_selection))
         self.config.set('ai_engine', 'streaming_speed', str(self.streaming_speed))
         self.config.set('ai_engine', 'additional_info_speed', str(self.additional_info_speed))
         self.config.set('ai_engine', 'letter_streaming', str(self.letter_streaming))

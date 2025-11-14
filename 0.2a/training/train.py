@@ -1,6 +1,8 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox, filedialog
 import json
+import datetime
+import os
 from core.train_engine import TrainingEngine, ModelManager
 
 class BaseDialog:
@@ -1509,6 +1511,9 @@ class TrainingGUI:
         self.configure_ttk_styles()
         self.setup_gui()
         
+        # Ensure models folder exists (same as 0.1a)
+        os.makedirs("models", exist_ok=True)
+        
         if not self.engine.available_models:
             self.root.after(100, self.prompt_create_first_model)
         else:
@@ -2230,15 +2235,27 @@ class TrainingGUI:
         if not self.engine.get_qa_groups():
             messagebox.showwarning("Warning", "No data to export.")
             return
-            
+        
+        # Generate automatic filename using model name
+        if self.engine.current_model:
+            # Clean the model name for filename use
+            clean_name = "".join(c for c in self.engine.current_model if c.isalnum() or c in (' ', '-', '_')).rstrip()
+            clean_name = clean_name.replace(' ', '_')
+            timestamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+            default_filename = f"{clean_name}_{timestamp}.json"
+        else:
+            default_filename = f"export_{datetime.datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
+        
         filename = filedialog.asksaveasfilename(
             defaultextension=".json",
-            filetypes=[("JSON files", "*.json")]
+            filetypes=[("JSON files", "*.json")],
+            initialfile=default_filename  # This sets the preset filename
         )
+        
         if filename:
             try:
                 self.engine.export_to_json(filename)
-                messagebox.showinfo("Success", "Data exported successfully")
+                messagebox.showinfo("Success", f"Data exported successfully to:\n{filename}")
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Export failed: {str(e)}")
