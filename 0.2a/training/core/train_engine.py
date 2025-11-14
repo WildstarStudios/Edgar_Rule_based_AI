@@ -6,7 +6,8 @@ class ModelManager:
     def __init__(self, parent, on_model_change=None):
         self.parent = parent
         self.on_model_change = on_model_change
-        self.models_folder = "models"
+        # Save models in the training folder (one level above core)
+        self.models_folder = os.path.join(os.path.dirname(os.path.dirname(__file__)), "models")
         self.current_model = None
         self.available_models = []
         
