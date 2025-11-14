@@ -1,0 +1,75 @@
+{
+  "name": "Edgar",
+  "description": "",
+  "author": "aayden",
+  "version": "1.0.0",
+  "created_at": "2025-11-13T18:12:36.138894",
+  "qa_groups": [
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "asdfdsaf"
+      ],
+      "answers": [
+        "dfdsfasd"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "sfgtrserg"
+      ],
+      "answers": [
+        "fhdfsfgtrs"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "dafdsafdsa"
+      ],
+      "answers": [
+        "asdfdasfasd"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "asdfsad"
+      ],
+      "answers": [
+        "adfadsfd"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    },
+    {
+      "group_name": "",
+      "group_description": "",
+      "questions": [
+        "test"
+      ],
+      "answers": [
+        "test"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": []
+    }
+  ],
+  "updated_at": "2025-11-13T21:14:52.558800"
+}

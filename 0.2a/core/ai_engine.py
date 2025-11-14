@@ -82,7 +82,11 @@ class AdvancedChatbot:
                 print(f"✅ Auto-selected model: {self.current_model}")
         
         if self.current_model:
-            self.load_model_data()
+            success = self.load_model_data()
+            if not success and self.available_models:
+                # Try to load the first available model if current fails
+                self.current_model = self.available_models[0]
+                self.load_model_data()
             
             if self.auto_start_chat or __name__ == "__main__":
                 self.chat()
@@ -201,19 +205,29 @@ class AdvancedChatbot:
         """Load data from the selected model"""
         if not self.current_model:
             print("❌ No model selected")
-            return
+            return False
         
         model_path = os.path.join(self.models_folder, f"{self.current_model}.json")
         try:
-            with open(model_path, 'r') as f:
+            with open(model_path, 'r', encoding='utf-8') as f:
                 model_data = json.load(f)
             
             self.qa_groups = model_data.get('qa_groups', [])
             print(f"✅ Loaded {len(self.qa_groups)} QA groups from '{self.current_model}'")
+            return True
             
+        except FileNotFoundError:
+            print(f"❌ Model file not found: {model_path}")
+            self.qa_groups = []
+            return False
+        except json.JSONDecodeError as e:
+            print(f"❌ Error parsing model JSON: {e}")
+            self.qa_groups = []
+            return False
         except Exception as e:
             print(f"❌ Error loading model: {e}")
             self.qa_groups = []
+            return False
     
     # ===== ENHANCED TREE NAVIGATION SYSTEM =====
     

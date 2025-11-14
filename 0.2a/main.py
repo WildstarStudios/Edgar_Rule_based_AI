@@ -61,7 +61,17 @@ class DarkChatbotGUI:
             'hover_secondary': '#35356a',
             'scrollbar_bg': '#1a1a2e',
             'scrollbar_slider': '#6c63ff',
-            'scrollbar_hover': '#5750d3'
+            'scrollbar_hover': '#5750d3',
+            'dropdown_bg': '#2d2d5a',
+            'dropdown_fg': '#ffffff',
+            'dropdown_field_bg': '#2d2d5a',
+            'dropdown_field_fg': '#ffffff',
+            'dropdown_arrow_bg': '#6c63ff',
+            'dropdown_list_bg': '#2d2d5a',
+            'dropdown_list_fg': '#ffffff',
+            'dropdown_list_select_bg': '#6c63ff',
+            'dropdown_list_select_fg': '#ffffff',
+            'dropdown_border': '#404080'
         }
         
         # Initialize chatbot with configuration from config file
@@ -107,6 +117,19 @@ class DarkChatbotGUI:
         
         return config
     
+    def get_available_models(self):
+        """Get list of available models from models folder"""
+        models_folder = "models"
+        models = []
+        
+        if os.path.exists(models_folder):
+            for file in os.listdir(models_folder):
+                if file.endswith('.json'):
+                    model_name = file[:-5]  # Remove .json extension
+                    models.append(model_name)
+        
+        return sorted(models)
+    
     def setup_gui(self):
         # Main container
         main_container = tk.Frame(self.root, bg=self.colors['bg_primary'])
@@ -141,6 +164,43 @@ class DarkChatbotGUI:
         tk.Label(logo_frame, text="Your Personal Assistant", 
                 font=('Arial', 11), bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack()
         
+        # MODEL SELECTION DROPDOWN
+        model_frame = tk.Frame(sidebar, bg=self.colors['bg_secondary'])
+        model_frame.pack(fill=tk.X, padx=20, pady=(15, 0))
+        
+        tk.Label(model_frame, text="MODEL", font=('Arial', 11),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(anchor='w')
+        
+        # Get available models
+        self.available_models = self.get_available_models()
+        
+        # Create dropdown
+        self.model_var = tk.StringVar()
+        self.model_dropdown = ttk.Combobox(
+            model_frame,
+            textvariable=self.model_var,
+            values=self.available_models,
+            state="readonly",
+            height=15,
+            font=('Arial', 9)
+        )
+        
+        # Style the dropdown to match dark theme
+        self.style_dropdown()
+        
+        self.model_dropdown.pack(fill=tk.X, pady=(5, 0))
+        
+        # Set current model if available
+        if self.available_models:
+            if hasattr(self.chatbot, 'current_model') and self.chatbot.current_model in self.available_models:
+                self.model_var.set(self.chatbot.current_model)
+            else:
+                self.model_var.set(self.available_models[0])
+                self.change_model(self.available_models[0])
+        
+        # Bind selection event
+        self.model_dropdown.bind('<<ComboboxSelected>>', self.on_model_selected)
+        
         # Separator
         separator = tk.Frame(sidebar, height=2, bg=self.colors['border'])
         separator.pack(fill=tk.X, padx=20, pady=10)
@@ -157,6 +217,7 @@ class DarkChatbotGUI:
             ("🧠 Context", self.show_context),
             ("📊 Statistics", self.show_statistics),
             ("🔄 New Chat", self.reset_chat),
+            ("🔄 Refresh Models", self.refresh_models),
             ("⚙️ Settings", self.show_settings),
             ("❓ Help", self.show_help)
         ]
@@ -182,6 +243,111 @@ class DarkChatbotGUI:
                               font=('Arial', 9), bg=self.colors['bg_secondary'], 
                               fg=self.colors['text_secondary'])
         status_label.pack(anchor='w', pady=(5, 0))
+        
+    def style_dropdown(self):
+        """Style the dropdown to match dark theme"""
+        style = ttk.Style()
+        style.theme_use('clam')  # Use 'clam' theme as base for customization
+        
+        # Configure the main combobox style
+        style.configure('TCombobox',
+            background=self.colors['dropdown_field_bg'],
+            foreground=self.colors['dropdown_field_fg'],
+            fieldbackground=self.colors['dropdown_field_bg'],
+            selectbackground=self.colors['dropdown_list_select_bg'],
+            selectforeground=self.colors['dropdown_list_select_fg'],
+            borderwidth=1,
+            relief='flat',
+            focuscolor=self.colors['accent_primary'],
+            arrowcolor=self.colors['dropdown_arrow_bg'],
+            bordercolor=self.colors['dropdown_border'],
+            lightcolor=self.colors['dropdown_bg'],
+            darkcolor=self.colors['dropdown_bg']
+        )
+        
+        # Configure the combobox map for different states
+        style.map('TCombobox',
+            background=[('active', self.colors['dropdown_field_bg']),
+                       ('disabled', self.colors['input_bg_disabled'])],
+            foreground=[('active', self.colors['dropdown_field_fg']),
+                       ('disabled', self.colors['text_disabled'])],
+            fieldbackground=[('active', self.colors['dropdown_field_bg']),
+                           ('disabled', self.colors['input_bg_disabled'])],
+            selectbackground=[('active', self.colors['dropdown_list_select_bg'])],
+            selectforeground=[('active', self.colors['dropdown_list_select_fg'])],
+            arrowcolor=[('active', self.colors['accent_secondary']),
+                       ('disabled', self.colors['text_disabled'])]
+        )
+        
+        # Configure the dropdown listbox
+        style.configure('TCombobox.Listbox',
+            background=self.colors['dropdown_list_bg'],
+            foreground=self.colors['dropdown_list_fg'],
+            selectbackground=self.colors['dropdown_list_select_bg'],
+            selectforeground=self.colors['dropdown_list_select_fg'],
+            borderwidth=1,
+            relief='flat',
+            font=('Arial', 9)
+        )
+        
+    def on_model_selected(self, event):
+        """Handle model selection from dropdown"""
+        selected_model = self.model_var.get()
+        if selected_model and selected_model in self.available_models:
+            self.change_model(selected_model)
+
+    def change_model(self, model_name):
+        """Change the current model"""
+        try:
+            # Show loading status
+            self.status_var.set(f"Loading {model_name}...")
+            
+            # Update chatbot model
+            self.chatbot.current_model = model_name
+            self.chatbot.load_model_data()
+            
+            # Update status
+            self.status_var.set(f"Model loaded: {model_name}")
+            
+            # Add system message
+            self.add_message("system", f"✅ Switched to model: {model_name}")
+            
+            # Show model info
+            group_count = len(self.chatbot.qa_groups)
+            self.add_message("system", f"📊 Model contains {group_count} QA groups")
+            
+        except Exception as e:
+            error_msg = f"Error loading model {model_name}: {str(e)}"
+            self.status_var.set("Model load failed")
+            self.add_message("error", error_msg)
+            messagebox.showerror("Model Error", error_msg)
+
+    def refresh_models(self):
+        """Refresh the list of available models"""
+        try:
+            previous_models = set(self.available_models)
+            self.available_models = self.get_available_models()
+            current_models = set(self.available_models)
+            
+            # Update dropdown
+            self.model_dropdown['values'] = self.available_models
+            
+            # Check for changes
+            new_models = current_models - previous_models
+            removed_models = previous_models - current_models
+            
+            if new_models:
+                self.add_message("system", f"✅ New models detected: {', '.join(new_models)}")
+            if removed_models:
+                self.add_message("system", f"❌ Models removed: {', '.join(removed_models)}")
+            
+            if not new_models and not removed_models:
+                self.add_message("system", "✅ Model list is up to date")
+            
+            self.status_var.set(f"Models refreshed: {len(self.available_models)} available")
+            
+        except Exception as e:
+            self.add_message("error", f"Error refreshing models: {str(e)}")
         
     def setup_main_content(self, parent):
         main_content = tk.Frame(parent, bg=self.colors['bg_primary'])
@@ -366,7 +532,13 @@ class DarkChatbotGUI:
             self.send_message()
     
     def display_welcome(self):
-        welcome_text = """🌟 Welcome to Edgar AI Assistant
+        current_model = getattr(self.chatbot, 'current_model', 'Default')
+        group_count = len(self.chatbot.qa_groups) if hasattr(self.chatbot, 'qa_groups') else 0
+        
+        welcome_text = f"""🌟 Welcome to Edgar AI Assistant
+
+Current Model: {current_model}
+Knowledge Base: {group_count} QA groups
 
 I'm your intelligent companion designed to help with programming, 
 AI concepts, game development, and much more.
@@ -573,6 +745,9 @@ How can I assist you today?"""
     def reset_chat(self):
         """Reset the conversation"""
         if messagebox.askyesno("New Chat", "Start a new conversation? Current context will be cleared."):
+            # Save current model
+            current_model = getattr(self.chatbot, 'current_model', None)
+            
             # Reset chatbot context using the new method
             self.chatbot.reset_conversation_context()
             
@@ -584,17 +759,25 @@ How can I assist you today?"""
             # Show welcome message again
             self.display_welcome()
             
-            self.status_var.set("New chat started")
+            # Update status with model info
+            if current_model:
+                self.status_var.set(f"New chat started - Model: {current_model}")
+            else:
+                self.status_var.set("New chat started")
     
     def show_settings(self):
         """Show settings dialog"""
+        current_model = getattr(self.chatbot, 'current_model', 'None')
+        available_count = len(self.available_models)
+        
         settings_text = f"""Current Settings:
 
 AI Engine:
+• Current Model: {current_model}
+• Available Models: {available_count}
 • Streaming Speed: {self.chatbot.streaming_speed} WPM
 • Streaming Mode: {'Letter-by-Letter' if self.chatbot.letter_streaming else 'Word-by-Word'}
 • Additional Info Speed: {self.chatbot.additional_info_speed} WPM
-• Model: {self.chatbot.current_model}
 
 GUI:
 • Window Size: {self.config.get('gui', 'window_width')}x{self.config.get('gui', 'window_height')}
@@ -619,11 +802,13 @@ Features:
 • Detailed follow-up information
 • Conversation statistics
 • Real-time text streaming
+• Model selection dropdown
 
 Tips:
 • Use the quick action buttons for common questions
 • The assistant maintains context across messages
-• Press Enter to send messages quickly"""
+• Press Enter to send messages quickly
+• Switch models using the dropdown in the sidebar"""
 
         messagebox.showinfo("Assistant Help", help_text)
 
