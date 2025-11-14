@@ -1458,9 +1458,15 @@ class GroupEditor(BaseDialog):
             self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
     
     def save_group(self):
-        # Remove requirement for questions and answers
+        # Enforce group name requirement
+        group_name = self.name_var.get().strip()
+        if not group_name:
+            messagebox.showwarning("Warning", "Group name is required.")
+            self.name_entry.focus_set()
+            return
+        
         group_data = {
-            'group_name': self.name_var.get(),
+            'group_name': group_name,
             'group_description': self.desc_var.get(),
             'questions': list(self.questions_list.get(0, tk.END)),
             'answers': list(self.answers_list.get(0, tk.END)),
