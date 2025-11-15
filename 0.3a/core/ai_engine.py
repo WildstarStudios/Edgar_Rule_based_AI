@@ -21,23 +21,13 @@ class AdvancedChatbot:
         # Apply configuration with kwargs override
         self.enable_model_selection = kwargs.get('enable_model_selection', 
                                                self.config.getboolean('ai_engine', 'enable_model_selection', fallback=True))
-        self.streaming_speed = kwargs.get('streaming_speed', 
-                                        self.config.getint('ai_engine', 'streaming_speed', fallback=10000))
-        self.additional_info_speed = kwargs.get('additional_info_speed', 
-                                              self.config.getint('ai_engine', 'additional_info_speed', fallback=10000))
-        self.letter_streaming = kwargs.get('letter_streaming', 
-                                         self.config.getboolean('ai_engine', 'letter_streaming', fallback=False))
         self.auto_start_chat = kwargs.get('auto_start_chat', 
                                         self.config.getboolean('ai_engine', 'auto_start_chat', fallback=True))
         self.answer_confidence_requirement = kwargs.get('answer_confidence_requirement',
                                                       self.config.getfloat('ai_engine', 'answer_confidence_requirement', fallback=0.85))
-        self.speed_limit = kwargs.get('speed_limit', 
-                                    self.config.getboolean('ai_engine', 'speed_limit', fallback=True))
         
-        # Streaming callbacks for GUI integration
-        self.streaming_callback = kwargs.get('streaming_callback', None)
-        self.thinking_callback = kwargs.get('thinking_callback', None)
-        self.response_complete_callback = kwargs.get('response_complete_callback', None)
+        # Streaming is now handled by the layer - we don't need streaming callbacks here
+        self.streaming_api = kwargs.get('streaming_api', None)
         
         self.qa_groups = []
         
@@ -125,12 +115,8 @@ class AdvancedChatbot:
         defaults = {
             'ai_engine': {
                 'enable_model_selection': 'False',
-                'streaming_speed': '10000',
-                'additional_info_speed': '10000',
-                'letter_streaming': 'False',
                 'auto_start_chat': 'True',
-                'answer_confidence_requirement': '0.85',
-                'speed_limit': 'True'
+                'answer_confidence_requirement': '0.85'
             }
         }
         
@@ -152,12 +138,8 @@ class AdvancedChatbot:
     
     def save_configuration(self):
         """Save current configuration to file"""
-        self.config.set('ai_engine', 'streaming_speed', str(self.streaming_speed))
-        self.config.set('ai_engine', 'additional_info_speed', str(self.additional_info_speed))
-        self.config.set('ai_engine', 'letter_streaming', str(self.letter_streaming))
         self.config.set('ai_engine', 'auto_start_chat', str(self.auto_start_chat))
         self.config.set('ai_engine', 'answer_confidence_requirement', str(self.answer_confidence_requirement))
-        self.config.set('ai_engine', 'speed_limit', str(self.speed_limit))
         
         with open(self.config_file, 'w') as f:
             self.config.write(f)
@@ -428,123 +410,24 @@ class AdvancedChatbot:
         
         return False
     
-    # ===== FIXED STREAMING FUNCTIONALITY =====
+    # ===== STREAMING VIA LAYER API =====
     
-    def stream_text(self, text: str, prefix: str = "🤖 ", wpm: int = None, callback: Callable = None):
-        """Stream text word by word or letter by letter with adjustable speed"""
-        if wpm is None:
-            wpm = self.streaming_speed
-            
-        # Apply speed limit setting
-        if not self.speed_limit:
-            wpm = 0
-            
-        if wpm == 0:
-            full_text = f"{prefix}{text}"
-            if callback:
-                callback(full_text)
-            else:
-                print(full_text)
-            return full_text
-        
-        output_method = callback if callback else lambda x: print(x, end='', flush=True)
-        
-        if self.letter_streaming:
-            return self._stream_letters(text, prefix, wpm, output_method)
+    def stream_text_via_api(self, text: str, prefix: str = "") -> str:
+        """Stream text using the layer API if available, otherwise print directly"""
+        if self.streaming_api:
+            return self.streaming_api.stream_text(text, prefix)
         else:
-            return self._stream_words_fixed(text, prefix, wpm, output_method)
+            # Fallback for standalone mode
+            full_text = f"{prefix}{text}"
+            print(full_text)
+            return full_text
     
-    def _stream_words_fixed(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
-        """Stream text word by word with preserved formatting - FIXED VERSION"""
-        words_per_second = wpm / 60.0
-        delay_per_word = 1.0 / words_per_second if words_per_second > 0 else 0
-        
-        # Use regex to split while preserving all whitespace
-        # This pattern captures words and the whitespace that follows them
-        tokens = re.findall(r'\S+\s*', text)
-        
-        full_output = prefix
-        output_method(prefix)
-        
-        for token in tokens:
-            # Output the token (word + its following whitespace)
-            full_output += token
-            output_method(token)
-            
-            # Calculate dynamic delay based on token characteristics
-            base_delay = delay_per_word
-            
-            # Longer pauses for punctuation
-            if token.rstrip().endswith(('.', '!', '?')):
-                base_delay *= 1.8
-            elif token.rstrip().endswith((',', ';', ':')):
-                base_delay *= 1.3
-            
-            # Check for newlines in the whitespace part
-            if '\n' in token:
-                # Count newlines for longer pauses
-                newline_count = token.count('\n')
-                base_delay *= (1.5 + (newline_count * 0.5))
-            
-            time.sleep(base_delay)
-        
-        # Always end with newline if not already there
-        if not full_output.endswith('\n'):
-            output_method('\n')
-            full_output += '\n'
-            
-        return full_output
-    
-    def _stream_letters(self, text: str, prefix: str, wpm: int, output_method: Callable) -> str:
-        """Stream text letter by letter with preserved formatting"""
-        lpm = wpm * 5
-        letters_per_second = lpm / 60.0
-        delay_per_letter = 1.0 / letters_per_second if letters_per_second > 0 else 0
-        
-        full_output = prefix
-        output_method(prefix)
-        
-        for char in text:
-            full_output += char
-            output_method(char)
-            
-            # Dynamic delays based on character type
-            if char in '.!?':
-                time.sleep(delay_per_letter * 3)
-            elif char in ',;:':
-                time.sleep(delay_per_letter * 2)
-            elif char == ' ':
-                time.sleep(delay_per_letter * 1.5)
-            elif char == '\n':
-                time.sleep(delay_per_letter * 4)  # Longer pause for newlines
-            else:
-                time.sleep(delay_per_letter)
-        
-        output_method('\n')
-        return full_output + '\n'
-    
-    def set_streaming_speed(self, wpm: int):
-        """Set main response streaming speed in words per minute (0 = off)"""
-        self.streaming_speed = max(0, wpm)
-        mode = "letters" if self.letter_streaming else "words"
-        status = "disabled" if wpm == 0 else f"set to {wpm} WPM ({mode})"
-        print(f"📝 Main response streaming {status}")
-        self.save_configuration()
-    
-    def set_additional_info_speed(self, wpm: int):
-        """Set additional info streaming speed in words per minute (0 = off)"""
-        self.additional_info_speed = max(0, wpm)
-        mode = "letters" if self.letter_streaming else "words"
-        status = "disabled" if wpm == 0 else f"set to {wpm} WPM ({mode})"
-        print(f"📝 Additional info streaming {status}")
-        self.save_configuration()
-    
-    def toggle_letter_streaming(self):
-        """Toggle between word and letter streaming modes"""
-        self.letter_streaming = not self.letter_streaming
-        mode = "LETTER-BY-LETTER" if self.letter_streaming else "WORD-BY-WORD"
-        print(f"📝 Streaming mode changed to: {mode}")
-        self.save_configuration()
+    def stream_thinking_via_api(self, text: str):
+        """Stream thinking indicator via API"""
+        if self.streaming_api:
+            self.streaming_api.stream_thinking(text)
+        else:
+            print(f"THINKING: {text}")
     
     def set_confidence_requirement(self, requirement: float):
         """Set the minimum confidence requirement for answers (0.0 to 1.0, 0.0 = disabled)"""
@@ -555,13 +438,6 @@ class AdvancedChatbot:
         self.answer_confidence_requirement = requirement
         status = "disabled" if requirement == 0.0 else f"set to {requirement:.2f}"
         print(f"🎯 Answer confidence requirement {status}")
-        self.save_configuration()
-    
-    def toggle_speed_limit(self):
-        """Toggle speed limiting on/off"""
-        self.speed_limit = not self.speed_limit
-        status = "ENABLED" if self.speed_limit else "DISABLED"
-        print(f"🚀 Speed limiting {status}")
         self.save_configuration()
     
     # ===== ENHANCED MATCHING SYSTEM =====
@@ -858,7 +734,6 @@ class AdvancedChatbot:
         print(f"   Confidence rejections: {self.performance_stats['confidence_rejections']}")
         print(f"   Groups in model: {len(self.qa_groups)}")
         print(f"   Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
-        print(f"   Speed limiting: {'enabled' if self.speed_limit else 'disabled'}")
     
     # ===== CHAT INTERFACE =====
     
@@ -867,20 +742,11 @@ class AdvancedChatbot:
             print("❌ No model loaded. Cannot start chat.")
             return
         
-        streaming_mode = "LETTER-BY-LETTER" if self.letter_streaming else "WORD-BY-WORD"
-        
         print(f"\n🤖 {self.current_model} - Enhanced Chatbot with Tree Navigation")
         print("Type 'quit' to exit, 'stats' for statistics, 'context' for current context")
         print("Type 'reset' to clear conversation context")
-        print("Type 'streaming <wpm>' to set main response streaming speed (0 = off)")
-        print("Type 'additional_speed <wpm>' to set additional info streaming speed (0 = off)")
-        print("Type 'letter_mode' to toggle between word and letter streaming")
         print("Type 'confidence <value>' to set minimum confidence requirement (0.0-1.0, 0.0 = disabled)")
-        print("Type 'speed_limit' to toggle speed limiting on/off")
-        print(f"✨ Main response streaming: {self.streaming_speed} WPM ({'enabled' if self.streaming_speed > 0 else 'disabled'}) - {streaming_mode}")
-        print(f"✨ Additional info streaming: {self.additional_info_speed} WPM ({'enabled' if self.additional_info_speed > 0 else 'disabled'}) - {streaming_mode}")
         print(f"✨ Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
-        print(f"✨ Speed limiting: {'enabled' if self.speed_limit else 'disabled'}")
         print("✨ NEW: Natural tree navigation - say 'go back', 'what are my options', etc.")
         print("-" * 60)
         
@@ -901,38 +767,6 @@ class AdvancedChatbot:
                 
                 elif user_input.lower() == 'stats':
                     self.show_statistics()
-                    continue
-                
-                elif user_input.lower() == 'letter_mode':
-                    self.toggle_letter_streaming()
-                    continue
-                
-                elif user_input.lower() == 'speed_limit':
-                    self.toggle_speed_limit()
-                    continue
-                
-                elif user_input.lower().startswith('streaming'):
-                    parts = user_input.split()
-                    if len(parts) == 2:
-                        try:
-                            wpm = int(parts[1])
-                            self.set_streaming_speed(wpm)
-                        except ValueError:
-                            print("❌ Please enter a valid number for WPM")
-                    else:
-                        print("Usage: streaming <wpm> (0 = off)")
-                    continue
-                
-                elif user_input.lower().startswith('additional_speed'):
-                    parts = user_input.split()
-                    if len(parts) == 2:
-                        try:
-                            wpm = int(parts[1])
-                            self.set_additional_info_speed(wpm)
-                        except ValueError:
-                            print("❌ Please enter a valid number for WPM")
-                    else:
-                        print("Usage: additional_speed <wpm> (0 = off)")
                     continue
                 
                 elif user_input.lower().startswith('confidence'):
@@ -962,7 +796,7 @@ class AdvancedChatbot:
                 print(f"🤖 Error: {e}")
     
     def display_responses(self, responses: List[Tuple]):
-        """Display responses with streaming"""
+        """Display responses - streaming is handled by layer in GUI mode"""
         for i, (original_question, answer, confidence, corrections, matched_group, match_type) in enumerate(responses, 1):
             print(f"\n--- Question {i} ---")
             print(f"📝 You asked: '{original_question}'")
@@ -974,9 +808,9 @@ class AdvancedChatbot:
             if answer:
                 if match_type == "confidence_rejection":
                     print("❌ Confidence too low - treating as unknown question")
-                    self.stream_text(answer, "🤖 ", self.streaming_speed)
+                    self.stream_text_via_api(answer, "🤖 ")
                 else:
-                    self.stream_text(answer, "🤖 ", self.streaming_speed)
+                    self.stream_text_via_api(answer, "🤖 ")
                 
                 if matched_group and confidence > 0 and match_type != "confidence_rejection":
                     match_type_display = {
@@ -993,11 +827,11 @@ class AdvancedChatbot:
                     display_type = match_type_display.get(match_type, match_type)
                     
                     match_info = f"{display_type} from group '{matched_group}' (confidence: {confidence:.2f})"
-                    self.stream_text(match_info, "💡 ", self.additional_info_speed)
+                    self.stream_text_via_api(match_info, "💡 ")
                 
                 context_summary = self.get_context_summary()
                 if context_summary:
-                    self.stream_text(context_summary, "🧠 ", self.additional_info_speed)
+                    self.stream_text_via_api(context_summary, "🧠 ")
             else:
                 print("🤖 I don't know how to answer that yet.")
 

@@ -121,21 +121,12 @@ class RoutingGroupEditor:
     def __init__(self, parent, group_data=None, on_save=None):
         self.window = tk.Toplevel(parent)
         self.window.title("Routing Group Editor")
-        self.window.geometry("700x650")
+        self.window.geometry("700x600")  # Reduced height since threshold is removed
         self.window.configure(bg='#2d2d5a')
-        self.window.minsize(600, 550)
+        self.window.minsize(600, 500)
         
         self.on_save = on_save
         self.group_data = group_data or {}
-        
-        # Confidence thresholds (same as AI engine)
-        self.CONFIDENCE_THRESHOLDS = {
-            'exact_match': 0.95,
-            'high_confidence': 0.75,
-            'medium_confidence': 0.60,
-            'low_confidence': 0.45,
-            'min_acceptable': 0.35
-        }
         
         self.questions = []
         self.validation_errors = []
@@ -267,67 +258,9 @@ class RoutingGroupEditor:
         self.module_combo.grid(row=1, column=1, sticky='ew', pady=(0, 15))
         self.module_combo.set("None")
         
-        # Confidence threshold (dropdown)
-        tk.Label(
-            content_frame,
-            text="Confidence Threshold:",
-            font=('Arial', 11, 'bold'),
-            bg='#2d2d5a',
-            fg='white'
-        ).grid(row=2, column=0, sticky='w', pady=(0, 8))
-        
-        self.threshold_var = tk.DoubleVar(value=0.75)
-        
-        # Confidence threshold options for dropdown
-        threshold_options = [
-            ("Exact Match", 0.95),
-            ("High Confidence", 0.75),
-            ("Medium Confidence", 0.60),
-            ("Low Confidence", 0.45),
-            ("Custom", 0.75)
-        ]
-        
-        threshold_display = [f"{name} ({value})" for name, value in threshold_options[:-1]] + ["Custom..."]
-        threshold_values = [value for _, value in threshold_options]
-        
-        self.threshold_combo = ttk.Combobox(
-            content_frame,
-            values=threshold_display,
-            state="readonly",
-            font=('Arial', 11),
-            style='Custom.TCombobox'
-        )
-        self.threshold_combo.grid(row=2, column=1, sticky='ew', pady=(0, 15))
-        self.threshold_combo.set("High Confidence (0.75)")
-        
-        # Custom threshold entry (hidden by default)
-        self.custom_threshold_frame = tk.Frame(content_frame, bg='#2d2d5a')
-        self.custom_threshold_frame.grid(row=3, column=1, sticky='ew', pady=(0, 15))
-        self.custom_threshold_frame.grid_remove()  # Hidden initially
-        
-        tk.Label(
-            self.custom_threshold_frame,
-            text="Custom Threshold:",
-            font=('Arial', 10, 'bold'),
-            bg='#2d2d5a',
-            fg='white'
-        ).pack(side=tk.LEFT, padx=(0, 10))
-        
-        self.custom_threshold_var = tk.DoubleVar(value=0.75)
-        self.custom_threshold_entry = tk.Entry(
-            self.custom_threshold_frame,
-            textvariable=self.custom_threshold_var,
-            width=8,
-            font=('Arial', 10),
-            bg='#1a1a2e',
-            fg='white',
-            insertbackground='white'
-        )
-        self.custom_threshold_entry.pack(side=tk.LEFT)
-        
-        # Word limit settings
+        # Word limit settings (moved up since threshold is removed)
         word_limit_frame = tk.Frame(content_frame, bg='#2d2d5a')
-        word_limit_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(0, 15))
+        word_limit_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(0, 15))
         word_limit_frame.grid_columnconfigure(1, weight=1)
         
         tk.Label(
@@ -423,7 +356,7 @@ class RoutingGroupEditor:
         
         # Questions section (like training app)
         questions_frame = tk.Frame(content_frame, bg='#252547', relief='raised', bd=1)
-        questions_frame.grid(row=5, column=0, columnspan=2, sticky='nsew', pady=(0, 15))
+        questions_frame.grid(row=3, column=0, columnspan=2, sticky='nsew', pady=(0, 15))
         questions_frame.grid_columnconfigure(0, weight=1)
         questions_frame.grid_rowconfigure(1, weight=1)
         
@@ -501,7 +434,7 @@ class RoutingGroupEditor:
         
         # Validation error display
         self.validation_frame = tk.Frame(content_frame, bg='#2d2d5a')
-        self.validation_frame.grid(row=6, column=0, columnspan=2, sticky='ew', pady=(0, 10))
+        self.validation_frame.grid(row=4, column=0, columnspan=2, sticky='ew', pady=(0, 10))
         self.validation_label = tk.Label(
             self.validation_frame,
             text="",
@@ -515,11 +448,11 @@ class RoutingGroupEditor:
         
         # Instructions
         instructions_frame = tk.Frame(content_frame, bg='#2d2d5a')
-        instructions_frame.grid(row=7, column=0, columnspan=2, sticky='ew', pady=(0, 15))
+        instructions_frame.grid(row=5, column=0, columnspan=2, sticky='ew', pady=(0, 15))
         
         instructions = tk.Label(
             instructions_frame,
-            text="💡 Questions will be matched against user input. If confidence meets the threshold,\nthe request will be routed to the specified module. Word limits reduce confidence for longer inputs.",
+            text="💡 Questions will be matched against user input. If confidence meets the system threshold (0.75),\nthe request will be routed to the specified module. Word limits reduce confidence for longer inputs.",
             font=('Arial', 9),
             bg='#2d2d5a',
             fg='#b0b0d0',
@@ -555,11 +488,9 @@ class RoutingGroupEditor:
         self.save_button.pack(side=tk.RIGHT)
         
         # Configure content frame row weights
-        content_frame.grid_rowconfigure(5, weight=1)
+        content_frame.grid_rowconfigure(3, weight=1)
         
         # Bind events
-        self.threshold_combo.bind('<<ComboboxSelected>>', self.on_threshold_selected)
-        self.custom_threshold_var.trace('w', self.on_custom_threshold_changed)
         self.max_words_var.trace('w', self.validate_word_limit)
         self.name_var.trace('w', self.validate_form)
     
@@ -628,36 +559,6 @@ class RoutingGroupEditor:
         
         return len(errors) == 0
     
-    def on_threshold_selected(self, event):
-        """Handle threshold selection from dropdown"""
-        selection = self.threshold_combo.get()
-        
-        if selection == "Custom...":
-            self.custom_threshold_frame.grid()
-            # Set threshold to custom value
-            self.threshold_var.set(self.custom_threshold_var.get())
-        else:
-            self.custom_threshold_frame.grid_remove()
-            # Extract value from selection text
-            if "Exact Match" in selection:
-                self.threshold_var.set(0.95)
-            elif "High Confidence" in selection:
-                self.threshold_var.set(0.75)
-            elif "Medium Confidence" in selection:
-                self.threshold_var.set(0.60)
-            elif "Low Confidence" in selection:
-                self.threshold_var.set(0.45)
-    
-    def on_custom_threshold_changed(self, *args):
-        """Update threshold when custom value changes"""
-        if self.threshold_combo.get() == "Custom...":
-            try:
-                custom_val = float(self.custom_threshold_var.get())
-                if 0.35 <= custom_val <= 1.0:
-                    self.threshold_var.set(custom_val)
-            except:
-                pass
-    
     def add_question(self):
         """Add a new question using text editor popup"""
         def save_question(text):
@@ -711,25 +612,6 @@ class RoutingGroupEditor:
             if module and module != "None":
                 self.module_var.set(module)
         
-        # Load confidence threshold
-        if 'confidence_threshold' in self.group_data:
-            threshold = self.group_data['confidence_threshold']
-            self.threshold_var.set(threshold)
-            self.custom_threshold_var.set(threshold)
-            
-            # Set appropriate dropdown selection
-            if threshold == 0.95:
-                self.threshold_combo.set("Exact Match (0.95)")
-            elif threshold == 0.75:
-                self.threshold_combo.set("High Confidence (0.75)")
-            elif threshold == 0.60:
-                self.threshold_combo.set("Medium Confidence (0.60)")
-            elif threshold == 0.45:
-                self.threshold_combo.set("Low Confidence (0.45)")
-            else:
-                self.threshold_combo.set("Custom...")
-                self.custom_threshold_frame.grid()
-        
         # Load word limit settings
         if 'word_limit_enabled' in self.group_data:
             self.word_limit_enabled.set(self.group_data['word_limit_enabled'])
@@ -753,7 +635,6 @@ class RoutingGroupEditor:
         
         group_name = self.name_var.get().strip()
         module = self.module_var.get()
-        threshold = self.threshold_var.get()
         
         # Module is optional now - can be "None"
         if not module:
@@ -762,7 +643,6 @@ class RoutingGroupEditor:
         group_data = {
             'group_name': group_name,
             'engine': module,
-            'confidence_threshold': threshold,
             'word_limit_enabled': self.word_limit_enabled.get(),
             'max_words': self.max_words_var.get() if self.word_limit_enabled.get() else 0,
             'penalty_per_word': self.penalty_per_word_var.get() if self.word_limit_enabled.get() else 0.0,
@@ -1193,7 +1073,7 @@ class RoutingTrainerGUI:
         )
         delete_btn.pack(side=tk.LEFT, padx=(2, 0))
         
-        # Module and confidence row
+        # Module and info row
         info_frame = tk.Frame(content, bg='#252547')
         info_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0, 6))
         
@@ -1219,19 +1099,15 @@ class RoutingTrainerGUI:
         )
         module_badge.pack(side=tk.LEFT)
         
-        # Confidence indicator
-        threshold = group['confidence_threshold']
-        confidence_color = self.get_confidence_color(threshold)
-        confidence_text = self.get_confidence_text(threshold)
-        
-        confidence_label = tk.Label(
+        # System threshold indicator
+        threshold_label = tk.Label(
             info_frame,
-            text=f"● {confidence_text} ({threshold:.2f})",
+            text="● System Threshold (0.75)",
             font=('Arial', 8, 'bold'),
             bg='#252547',
-            fg=confidence_color
+            fg='#00d4ff'  # Blue for system threshold
         )
-        confidence_label.pack(side=tk.RIGHT)
+        threshold_label.pack(side=tk.RIGHT)
         
         # Stats row
         stats_frame = tk.Frame(content, bg='#252547')
@@ -1308,28 +1184,6 @@ class RoutingTrainerGUI:
         colors = ['#00d4ff', '#6c63ff', '#ff6b9d', '#00ff88', '#ffd166', '#a78bfa']
         hash_val = sum(ord(c) for c in module)
         return colors[hash_val % len(colors)]
-    
-    def get_confidence_color(self, threshold):
-        """Return color for confidence indicator"""
-        if threshold >= 0.95:
-            return '#00ff88'  # Green for exact match
-        elif threshold >= 0.75:
-            return '#00d4ff'  # Blue for high confidence
-        elif threshold >= 0.60:
-            return '#ffd166'  # Yellow for medium confidence
-        else:
-            return '#ff6b6b'  # Red for low confidence
-    
-    def get_confidence_text(self, threshold):
-        """Return text description for confidence level"""
-        if threshold >= 0.95:
-            return "Exact"
-        elif threshold >= 0.75:
-            return "High"
-        elif threshold >= 0.60:
-            return "Medium"
-        else:
-            return "Low"
     
     def new_group(self):
         """Create a new routing group"""

@@ -1,18 +1,28 @@
 {
   "routing_groups": [
     {
-      "group_name": "test",
-      "engine": "weather",
-      "confidence_threshold": 0.6,
+      "group_name": "Time",
+      "engine": "time",
       "word_limit_enabled": true,
       "max_words": 7,
-      "penalty_per_word": 0.02,
+      "penalty_per_word": 0.25,
       "questions": [
-        "What is the Weather"
+        "what is the time"
+      ]
+    },
+    {
+      "group_name": "Weather",
+      "engine": "weather",
+      "word_limit_enabled": true,
+      "max_words": 7,
+      "penalty_per_word": 0.25,
+      "questions": [
+        "what is the weather"
       ]
     }
   ],
   "available_engines": [
+    "time",
     "weather"
   ],
   "version": "1.0"

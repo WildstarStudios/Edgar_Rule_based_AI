@@ -6,11 +6,17 @@ Handles weather-related queries with Open-Meteo API and summary responses.
 import time
 import requests
 from typing import Optional, Callable
+try:
+    from fuzzywuzzy import process as fuzzy_process, fuzz
+    FUZZY_AVAILABLE = True
+except ImportError:
+    FUZZY_AVAILABLE = False
+    print("⚠️  fuzzywuzzy not installed. Install with: pip install fuzzywuzzy python-levenshtein")
 
 class WeatherModule:
     def __init__(self):
         self.name = "Weather Module"
-        self.version = "1.0"
+        self.version = "1.2"  # Updated version
         self.open_meteo_base = "https://api.open-meteo.com/v1"
         
         # Expanded city to coordinates mapping for common locations
@@ -35,6 +41,11 @@ class WeatherModule:
             "detroit": {"lat": 42.3314, "lon": -83.0458},
             "montreal": {"lat": 45.5017, "lon": -73.5673},
             "calgary": {"lat": 51.0447, "lon": -114.0719},
+            "texas": {"lat": 31.9686, "lon": 99.9018},
+            "new york city": {"lat": 40.7128, "lon": -74.0060},
+            "nyc": {"lat": 40.7128, "lon": -74.0060},
+            "la": {"lat": 34.0522, "lon": -118.2437},
+            "sf": {"lat": 37.7749, "lon": -122.4194},
             
             # Europe
             "london": {"lat": 51.5074, "lon": -0.1278},
@@ -102,6 +113,42 @@ class WeatherModule:
             "casablanca": {"lat": 33.5731, "lon": -7.5898}
         }
 
+    def fuzzy_match_city(self, user_input: str) -> Optional[tuple]:
+        """
+        Use fuzzy matching to find the best city match from user input.
+        Returns (city_name, confidence_score, coordinates) or None if no good match.
+        """
+        if not FUZZY_AVAILABLE:
+            return None
+            
+        # Extract potential location words (2-3 word phrases)
+        words = user_input.lower().split()
+        potential_queries = []
+        
+        # Create n-grams of 1, 2, and 3 words
+        for n in [3, 2, 1]:
+            for i in range(len(words) - n + 1):
+                phrase = " ".join(words[i:i+n])
+                potential_queries.append(phrase)
+        
+        # Try to match each potential query
+        best_match = None
+        best_score = 0
+        
+        for query in potential_queries:
+            # Skip very common words that aren't locations
+            if query in ["the", "a", "in", "at", "for", "weather", "forecast", "today", "tomorrow", "what's", "what", "is", "the", "like"]:
+                continue
+                
+            matches = fuzzy_process.extract(query, self.city_coordinates.keys(), limit=1)
+            if matches:
+                city, score = matches[0]
+                if score > best_score and score > 70:  # Threshold for acceptable match
+                    best_match = (city, score, self.city_coordinates[city])
+                    best_score = score
+        
+        return best_match if best_match else None
+
     def get_current_location_coordinates(self) -> dict:
         """
         Get approximate coordinates based on IP geolocation.
@@ -112,6 +159,7 @@ class WeatherModule:
             if response.status_code == 200:
                 data = response.json()
                 if data['status'] == 'success':
+                    print(f"📍 Detected location: {data['city']}, {data['country']}")
                     return {
                         "lat": data['lat'],
                         "lon": data['lon'],
@@ -122,34 +170,70 @@ class WeatherModule:
             print(f"❌ Error getting location from IP: {e}")
         
         # Fallback to a default location
+        print("📍 Using fallback location: New York, United States")
         return {"lat": 40.7128, "lon": -74.0060, "city": "New York", "country": "United States"}
 
     def extract_location(self, user_input: str) -> tuple:
         """
-        Extract location from user input.
+        Extract location from user input using both exact and fuzzy matching.
         Returns (location_type, location_name, coordinates)
         """
-        user_input = user_input.lower()
+        user_input = user_input.lower().strip()
         
-        # Check for known cities
+        # Skip if it's clearly a general weather query
+        general_queries = [
+            "weather", "forecast", "temperature", "how hot", "how cold", 
+            "what's the weather", "what is the weather", "how's the weather",
+            "how is the weather", "weather today", "weather now"
+        ]
+        
+        is_general_query = any(query in user_input for query in general_queries)
+        has_location_keyword = any(keyword in user_input for keyword in ["in ", "at ", "for "])
+        
+        # If it's a general query without location keywords, use current location
+        if is_general_query and not has_location_keyword:
+            current_location = self.get_current_location_coordinates()
+            location_name = f"{current_location['city']}, {current_location['country']}"
+            return "current", location_name, current_location
+        
+        # First, try exact matching for common cities
         for city, coords in self.city_coordinates.items():
             if city in user_input:
+                print(f"📍 Exact match found: {city.title()}")
                 return "specified", city.title(), coords
         
-        # Check for location patterns
-        location_patterns = ["in ", "at ", "for ", "weather ", "forecast "]
+        # Try fuzzy matching if exact match fails
+        fuzzy_result = self.fuzzy_match_city(user_input)
+        if fuzzy_result:
+            city, confidence, coords = fuzzy_result
+            print(f"📍 Fuzzy matched '{city}' with {confidence}% confidence")
+            return "specified", city.title(), coords
+        
+        # Check for location patterns as fallback
+        location_patterns = ["in ", "at ", "for "]
         for pattern in location_patterns:
             if pattern in user_input:
                 start_idx = user_input.find(pattern) + len(pattern)
                 remaining_text = user_input[start_idx:].strip()
                 
+                # Try exact match on remaining text
                 for city, coords in self.city_coordinates.items():
                     if city in remaining_text:
+                        print(f"📍 Pattern match found: {city.title()}")
                         return "specified", city.title(), coords
+                
+                # Try fuzzy match on remaining text
+                fuzzy_result = self.fuzzy_match_city(remaining_text)
+                if fuzzy_result:
+                    city, confidence, coords = fuzzy_result
+                    print(f"📍 Fuzzy matched '{city}' with {confidence}% confidence")
+                    return "specified", city.title(), coords
         
-        # No location specified - use current location
+        # No location specified - use current location with better messaging
+        print("📍 No location specified, using current location")
         current_location = self.get_current_location_coordinates()
-        return "current", current_location["city"], current_location
+        location_name = f"{current_location['city']}, {current_location['country']}"
+        return "current", location_name, current_location
 
     def get_weather_summary(self, coordinates: dict, location_name: str, location_type: str) -> str:
         """
@@ -230,11 +314,11 @@ class WeatherModule:
                               temp: int, condition: str, wind_speed: int) -> str:
         """Create a natural language weather summary"""
         
-        # Location context
+        # Location context - improved messaging
         if location_type == "current":
-            location_context = f"Right now in {location}"
+            location_context = f"Here's your current weather in {location}"
         else:
-            location_context = f"Currently in {location}"
+            location_context = f"Here's the current weather in {location}"
         
         # Temperature context
         if temp >= 80:
@@ -264,7 +348,7 @@ class WeatherModule:
         else:
             condition_context = f"with {condition}."
         
-        # Wind context - FIXED: Proper spacing
+        # Wind context
         if wind_speed > 20:
             wind_context = "It's quite windy out there!"
         elif wind_speed > 10:
@@ -275,7 +359,7 @@ class WeatherModule:
         # Combine everything with proper spacing
         return f"{location_context}, {temp_context} {condition_context} {wind_context}"
 
-    def process(self, user_input: str, streaming_callback: Optional[Callable] = None) -> str:
+    def process_query(self, user_input: str, streaming_callback: Optional[Callable] = None) -> str:
         """
         Process weather query - only returns the summary, doesn't stream it.
         """
@@ -291,6 +375,7 @@ class WeatherModule:
             
         except Exception as e:
             error_msg = f"Sorry, I encountered an issue getting weather information. Please try again."
+            print(f"❌ Weather module error: {e}")
             return error_msg
 
 
@@ -309,4 +394,4 @@ def process(user_input: str, streaming_callback: Optional[Callable] = None) -> s
     module = WeatherModule()
     
     # Just return the summary - streaming is handled by main GUI
-    return module.process(user_input)
+    return module.process_query(user_input)
