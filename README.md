@@ -5,11 +5,18 @@
 
 
 # Downloadable Builds
-
 * stable builds will be compiled with Nuitka.
 * for speed development builds will be packaged with PyInstaller.
 * https://drive.proton.me/urls/383FR1B88W#nOsm7CsYAyWt
 
+
+# 📢 Notice About Training Edgar
+* You can help improve Edgar by contributing to its training through the official GUI Trainer App.
+* Training involves adding new sentence variants, word variants, and follow‑up trees to make Edgar smarter and more accurate.
+* Community contributions are encouraged — share your training sets, suggest new variants, or help refine confidence scoring.
+* Please use the official builds and formats to ensure compatibility.
+* In the future, an official training guide and dataset store will be provided to make collaboration even easier.
+* You can also use the planned JSON Merger System to combine models, making training and collaboration easier.
 
 # Progress Report
     # 0.1a - basic features

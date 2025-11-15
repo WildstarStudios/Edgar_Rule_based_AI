@@ -1,0 +1,17 @@
+{
+  "routing_groups": [
+    {
+      "group_name": "test",
+      "engine": "None",
+      "confidence_threshold": 0.6,
+      "word_limit_enabled": true,
+      "max_words": 10,
+      "penalty_per_word": 0.02,
+      "questions": [
+        "What is the Weather"
+      ]
+    }
+  ],
+  "available_engines": [],
+  "version": "1.0"
+}
