@@ -168,6 +168,7 @@ class DarkChatbotGUI:
         
     def setup_sidebar(self, parent):
         sidebar = tk.Frame(parent, bg=self.colors['bg_secondary'], width=200)
+        sidebar.pack_propagate(False)
         sidebar.grid(row=0, column=0, sticky=(tk.N, tk.S, tk.W), padx=(0, 20))
         sidebar.grid_propagate(False)
         
@@ -702,7 +703,7 @@ How can I assist you today?"""
                 answer, confidence, source = response
                 
                 # Show module routing info
-                self.add_message("match_info", f"🔄 Routed to: {source} (confidence: {confidence:.2f})")
+                self.add_message("match_info", f"🔄: {source} (confidence: {confidence:.2f})")
                 
             else:
                 # Unknown format, try to handle gracefully
