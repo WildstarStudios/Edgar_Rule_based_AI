@@ -161,27 +161,25 @@ class StreamingLayer:
         for question in group_questions:
             question_lower = question.lower().strip()
             
-            # Use fuzzy partial ratio to handle misspellings and partial matches
-            # Partial ratio is good for handling strings that are similar but not identical
-            fuzzy_score = fuzz.partial_ratio(question_lower, user_input_lower)
-            
-            # Also check token set ratio for word order flexibility
+            # Use token set ratio for better semantic matching
+            # This handles word order variations and focuses on meaning
             token_set_score = fuzz.token_set_ratio(question_lower, user_input_lower)
             
-            # Use the higher of the two scores
-            best_fuzzy_score = max(fuzzy_score, token_set_score)
-            
-            # High threshold for fuzzy matching (80% similarity)
-            if best_fuzzy_score >= 80:
+            # Higher threshold for fuzzy matching (85% similarity)
+            # This prevents "what is the time" from matching "what is the weather"
+            if token_set_score >= 85:
                 # Perfect fuzzy match - starts with 1.0 confidence
                 base_confidence = 1.0
                 
-                # Apply word limit penalty if enabled and user input exceeds max words
+                # Apply word limit penalty ONLY if user input EXCEEDS max words
+                # If user input has equal or fewer words, no penalty is applied
                 if word_limit_enabled and user_word_count > max_words:
                     extra_words = user_word_count - max_words
                     penalty = extra_words * penalty_per_word
                     base_confidence = max(0.0, base_confidence - penalty)
+                    print(f"🔍 Word limit penalty applied: -{penalty:.2f} for {extra_words} extra words")
                 
+                print(f"🔍 Matched '{question}' with confidence {base_confidence:.2f} (fuzzy score: {token_set_score})")
                 return base_confidence
         
         # No fuzzy containment match found
