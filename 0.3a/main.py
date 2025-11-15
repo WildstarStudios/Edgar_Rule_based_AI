@@ -568,6 +568,7 @@ How can I assist you today?"""
         self.chat_display.config(state=tk.NORMAL)
         
         timestamp = time.strftime("%H:%M")
+        current_model = self.streaming_layer.get_current_model()
         
         if sender == "user":
             # User message - RIGHT ALIGNED
@@ -581,9 +582,9 @@ How can I assist you today?"""
         elif sender == "bot":
             # Bot message - LEFT ALIGNED  
             self.chat_display.insert(tk.END, f"\n", 'system')
-            # Header with timestamp and "Edgar:" on the LEFT
+            # Header with timestamp and model name on the LEFT
             self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
-            self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
+            self.chat_display.insert(tk.END, f"{current_model}: ", 'bot_header')
             self.chat_display.insert(tk.END, f"{message}\n", 'bot_msg')
             self.chat_display.insert(tk.END, "─" * 60 + "\n", 'separator')
             
@@ -636,6 +637,12 @@ How can I assist you today?"""
             self.chat_display.delete("end-2l", "end-1l")
             self.chat_display.config(state=tk.DISABLED)
             
+            # Check if we got any responses
+            if not responses:
+                self.root.after(0, lambda: self.add_message("bot", "I'm not sure how to respond to that. Could you try rephrasing your question?"))
+                self.root.after(0, self.processing_complete)
+                return
+            
             # Update GUI with responses using proper streaming
             self.root.after(0, lambda: self.display_responses_with_streaming(responses))
             
@@ -645,22 +652,8 @@ How can I assist you today?"""
     
     def display_responses_with_streaming(self, responses):
         """Display responses using the streaming layer"""
-        def show_additional_info_and_continue(matched_group, confidence, match_type, current_index):
-            """Show match information and context after streaming completes"""
-            # Show match information
-            if matched_group and confidence > 0 and match_type != "follow_up":
-                match_type_display = {
-                    "exact": "🎯 Exact match",
-                    "high_confidence": "✅ High confidence", 
-                    "medium_confidence": "⚠️ Medium confidence",
-                    "low_confidence": "🔍 Low confidence",
-                    "semantic": "🧠 Semantic match",
-                    "unknown": "❓ Unknown question"
-                }
-                display_type = match_type_display.get(match_type, match_type)
-                match_info = f"{display_type} (confidence: {confidence:.2f})"
-                self.add_message("match_info", match_info)
-            
+        def show_additional_info_and_continue(current_index):
+            """Show context after streaming completes"""
             # Show context summary if available
             context_summary = self.streaming_layer.get_context_summary()
             if context_summary and context_summary != "Minimal context":
@@ -676,22 +669,59 @@ How can I assist you today?"""
                 self.root.after(100, self.processing_complete)
                 return
             
-            original_question, answer, confidence, corrections, matched_group, match_type = responses[index]
+            # Handle both response formats (AI engine vs module routing)
+            response = responses[index]
             
-            # Show corrections if any
-            if corrections:
-                best_correction, best_score = corrections[0]
-                correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
-                self.add_message("correction", correction_text)
+            # Check response format and unpack accordingly
+            if len(response) == 6:
+                # AI Engine format: (original_question, answer, confidence, corrections, matched_group, match_type)
+                original_question, answer, confidence, corrections, matched_group, match_type = response
+                
+                # Show corrections if any
+                if corrections:
+                    best_correction, best_score = corrections[0]
+                    correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
+                    self.add_message("correction", correction_text)
+                    
+                # Show match information for AI engine responses
+                if matched_group and confidence > 0 and match_type != "follow_up":
+                    match_type_display = {
+                        "exact": "🎯 Exact match",
+                        "high_confidence": "✅ High confidence", 
+                        "medium_confidence": "⚠️ Medium confidence",
+                        "low_confidence": "🔍 Low confidence",
+                        "semantic": "🧠 Semantic match",
+                        "unknown": "❓ Unknown question"
+                    }
+                    display_type = match_type_display.get(match_type, match_type)
+                    match_info = f"{display_type} (confidence: {confidence:.2f})"
+                    self.add_message("match_info", match_info)
+                    
+            elif len(response) == 3:
+                # Module routing format: (answer, confidence, source)
+                answer, confidence, source = response
+                
+                # Show module routing info
+                self.add_message("match_info", f"🔄 Routed to: {source} (confidence: {confidence:.2f})")
+                
+            else:
+                # Unknown format, try to handle gracefully
+                print(f"⚠️ Unexpected response format: {response}")
+                if len(response) >= 1:
+                    answer = response[0] if isinstance(response[0], str) else str(response[0])
+                else:
+                    answer = "No response received"
+                confidence = 0.0
             
             # Display the answer using streaming
             if answer:
                 # Add bot message header
                 timestamp = time.strftime("%H:%M")
+                current_model = self.streaming_layer.get_current_model()
                 self.chat_display.config(state=tk.NORMAL)
                 self.chat_display.insert(tk.END, f"\n", 'system')
                 self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
-                self.chat_display.insert(tk.END, "Edgar: ", 'bot_header')
+                self.chat_display.insert(tk.END, f"{current_model}: ", 'bot_header')
                 self.chat_display.config(state=tk.DISABLED)
                 
                 # Stream the response using the streaming layer
@@ -703,9 +733,7 @@ How can I assist you today?"""
                     )
                     
                     # After streaming completes, show additional info and move to next response
-                    self.root.after(100, lambda: show_additional_info_and_continue(
-                        matched_group, confidence, match_type, index
-                    ))
+                    self.root.after(100, lambda: show_additional_info_and_continue(index))
                 
                 # Start streaming in a separate thread
                 threading.Thread(target=stream_response, daemon=True).start()
@@ -833,17 +861,6 @@ def main():
     try:
         # Create root window
         root = tk.Tk()
-        
-        # Try to set Windows dark title bar (Windows 10/11)
-        try:
-            if os.name == 'nt':  # Windows
-                import ctypes
-                set_window_attribute = ctypes.windll.dwmapi.DwmSetWindowAttribute
-                hwnd = ctypes.windll.user32.GetParent(root.winfo_id())
-                value = 2  # Dark mode
-                set_window_attribute(hwnd, 20, ctypes.byref(ctypes.c_int(value)), ctypes.sizeof(ctypes.c_int))
-        except:
-            pass  # Fall back to default title bar if this fails
         
         app = DarkChatbotGUI(root)
         
