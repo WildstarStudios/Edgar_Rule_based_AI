@@ -334,17 +334,17 @@ class WeatherModule:
         
         # Condition context
         if "rain" in condition:
-            condition_context = f"with {condition}. You might want an umbrella! ☔"
+            condition_context = f"with {condition}. You might want an umbrella! ☔ "
         elif "snow" in condition:
-            condition_context = f"with {condition}. Perfect for staying cozy! ❄️"
+            condition_context = f"with {condition}. Perfect for staying cozy! ❄️ "
         elif "clear" in condition or "sun" in condition:
-            condition_context = f"with {condition}. Great weather to be outside! ☀️"
+            condition_context = f"with {condition}. Great weather to be outside! ☀️ "
         elif "cloud" in condition:
-            condition_context = f"with {condition}. Not too bad for going out! ⛅"
+            condition_context = f"with {condition}. Not too bad for going out! ⛅ "
         elif "thunder" in condition:
-            condition_context = f"with {condition}. Best to stay indoors! ⚡"
+            condition_context = f"with {condition}. Best to stay indoors! ⚡ "
         elif "fog" in condition:
-            condition_context = f"with {condition}. Drive carefully if you're out! 🌫️"
+            condition_context = f"with {condition}. Drive carefully if you're out! 🌫️ "
         else:
             condition_context = f"with {condition}."
         

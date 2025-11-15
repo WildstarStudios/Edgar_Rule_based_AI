@@ -35,7 +35,7 @@
     * New Network Visualizer ✅
 
     # 0.3a - Modularization and Accuracy Improvements
-    * module system ❌
+    * module system ✅
     * Word Variant System ❌
     * Group Sections Upgrade ❌
     * make WebUi ❌
@@ -58,7 +58,8 @@
 
 # Modules
 * Web Search ❌
-* Weather Search ❌
+* Weather Search ✅
+* Time Search ✅
 * Joke Engine ❌
 * Recipe Engine ❌
 

@@ -32,6 +32,27 @@ echo Building chat-0.3a.exe...
   main.py
 
 REM ============================================================
+REM Build tty.exe from tty.py (Terminal app) for 0.3a
+REM ============================================================
+echo Building tty-0.3a.exe...
+"%PYINSTALLER%" --onefile ^
+  --distpath "%PACKAGE_DIR%" ^
+  --name "tty-0.3a" ^
+  --console ^
+  --add-data "config.cfg;." ^
+  --add-data "resources;resources" ^
+  --add-data "models;models" ^
+  --add-data "core;core" ^
+  --hidden-import "core.modules.weather" ^
+  --hidden-import "core.modules.time" ^
+  --hidden-import "fuzzywuzzy" ^
+  --hidden-import "fuzzywuzzy.process" ^
+  --hidden-import "fuzzywuzzy.fuzz" ^
+  --hidden-import "pytz" ^
+  --hidden-import "requests" ^
+  tty.py
+
+REM ============================================================
 REM Build train.exe from training/train.py (GUI app) for 0.3a
 REM ============================================================
 echo Building train-0.3a.exe...
@@ -96,7 +117,8 @@ echo.
 echo Distribution Package
 echo.
 echo Included Files:
-echo - chat-0.3a.exe      - Main Edgar AI application
+echo - chat-0.3a.exe      - Main Edgar AI application (GUI)
+echo - tty-0.3a.exe       - Terminal/Command Line interface
 echo - train-0.3a.exe     - Training application
 echo - route-trainer-0.3a.exe - Routing configuration tool
 echo - visualizer-0.3a.exe - Rule visualization tool
@@ -105,10 +127,17 @@ echo - resources\         - Routing configuration and resources
 echo - models\           - AI model data
 echo.
 echo Usage:
-echo 1. Run chat-0.3a.exe to start the main AI assistant
-echo 2. Run train-0.3a.exe to train new AI models
-echo 3. Run route-trainer-0.3a.exe to configure module routing
-echo 4. Run visualizer-0.3a.exe to visualize rule structures
+echo 1. Run chat-0.3a.exe to start the main AI assistant (GUI)
+echo 2. Run tty-0.3a.exe to start the terminal interface
+echo 3. Run train-0.3a.exe to train new AI models
+echo 4. Run route-trainer-0.3a.exe to configure module routing
+echo 5. Run visualizer-0.3a.exe to visualize rule structures
+echo.
+echo TTY Interface Features:
+echo - Full terminal/command line interface
+echo - Same AI engine and module routing as GUI
+echo - Real-time text streaming
+echo - All commands: stats, context, reset, models, modules, config, help
 echo.
 echo System Requirements:
 echo - Windows 10 or later
