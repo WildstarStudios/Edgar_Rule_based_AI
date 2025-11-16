@@ -1,5 +1,5 @@
 @echo off
-set PYINSTALLER=C:\Users\aayde\AppData\Local\Programs\Python\Python312\Scripts\pyinstaller.exe
+set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a2\.venv\Scripts\pyinstaller.exe
 set PACKAGE_DIR=dist\package
 
 REM ============================================================
@@ -29,6 +29,7 @@ echo Building chat-0.3a.exe...
   --hidden-import "fuzzywuzzy.fuzz" ^
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
+  --hidden-import "ddgs" ^
   main.py
 
 REM ============================================================
@@ -50,6 +51,7 @@ echo Building tty-0.3a.exe...
   --hidden-import "fuzzywuzzy.fuzz" ^
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
+  --hidden-import "ddgs" ^
   tty.py
 
 REM ============================================================

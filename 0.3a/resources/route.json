@@ -19,11 +19,45 @@
       "questions": [
         "what is the weather"
       ]
+    },
+    {
+      "group_name": "joke",
+      "engine": "joke",
+      "word_limit_enabled": true,
+      "max_words": 4,
+      "penalty_per_word": 0.25,
+      "questions": [
+        "tell me a joke"
+      ]
+    },
+    {
+      "group_name": "cooking",
+      "engine": "recipie",
+      "word_limit_enabled": true,
+      "max_words": 8,
+      "penalty_per_word": 0.25,
+      "questions": [
+        "i need a recipie"
+      ]
+    },
+    {
+      "group_name": "search up",
+      "engine": "search",
+      "word_limit_enabled": true,
+      "max_words": 5,
+      "penalty_per_word": 0.25,
+      "questions": [
+        "search",
+        "look up"
+      ]
     }
   ],
   "available_engines": [
+    "weather",
+    "joke",
+    "recipie",
     "time",
-    "weather"
+    "search"
   ],
   "version": "1.0"
 }

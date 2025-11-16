@@ -60,8 +60,8 @@
 * Web Search ❌
 * Weather Search ✅
 * Time Search ✅
-* Joke Engine ❌
-* Recipe Engine ❌
+* Joke Engine ✅
+* Recipe Engine ✅
 
 
 # Planned System Enhancements

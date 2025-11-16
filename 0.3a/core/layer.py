@@ -73,10 +73,22 @@ class StreamingLayer:
         # API state for modules
         self.api_connections = {}
         
+        # Enhanced module system
+        self.active_modules = []  # List of active module names with module_mode=True
+        self.module_limit = 3     # Maximum active modules
+        self.message_limit = 10   # Messages before unloading inactive modules
+        self.module_message_counts = {}  # Track messages since last valid input per module
+        self.module_usage_counts = {}    # Track total usage for LRU eviction
+        
+        # Module context for multi-turn conversations
+        self.module_contexts = {}
+        
         print("✅ Streaming Layer initialized with complete streaming control")
         print(f"   Routing threshold: {self.ROUTING_THRESHOLD}")
         print(f"   Streaming speed: {self.streaming_speed} WPM")
         print(f"   Letter streaming: {self.letter_streaming}")
+        print(f"   Module limit: {self.module_limit}")
+        print(f"   Message limit: {self.message_limit}")
     
     def load_configuration(self) -> configparser.ConfigParser:
         """Load configuration from file"""
@@ -143,36 +155,45 @@ class StreamingLayer:
             print(f"❌ Error saving routing config: {e}")
             return False
     
-    def _calculate_fuzzy_containment_confidence(self, user_input: str, group_questions: List[str], 
+    def _calculate_fuzzy_containment_confidence(self, user_input: str, group_questions: list, 
                                               word_limit_enabled: bool, max_words: int, penalty_per_word: float) -> float:
         """
-        Calculate confidence based on fuzzy containment matching with word limit penalties.
+        STRICT FUZZY MATCHING with minimum length requirements.
         
-        Uses fuzzywuzzy to handle misspellings while maintaining strict word limits.
-        
-        Returns 1.0 if there's a perfect fuzzy containment match within word limits.
-        Returns lower confidence if word limits are exceeded.
-        Returns 0.0 if no fuzzy containment match.
+        Prevents accidental module activations by requiring:
+        1. Minimum input length (3 characters)
+        2. Input must be substantial portion of target phrase (50%)
+        3. High fuzzy similarity threshold (90%)
         """
         user_input_lower = user_input.lower().strip()
         user_word_count = len(user_input_lower.split())
+        
+        # CRITICAL: Minimum length requirement to prevent single character matches
+        if len(user_input_lower) < 3:
+            print(f"🔍 Input too short for routing: '{user_input_lower}' (length: {len(user_input_lower)})")
+            return 0.0
         
         # Check for fuzzy containment in any of the group's questions
         for question in group_questions:
             question_lower = question.lower().strip()
             
+            # CRITICAL: Require user input to be substantial portion of target phrase
+            # Prevents "i" from matching "i need a recipie"
+            min_required_length = len(question_lower) * 0.5  # At least 50% of target length
+            if len(user_input_lower) < min_required_length:
+                print(f"🔍 Input too short for '{question}': '{user_input_lower}' ({len(user_input_lower)} < {min_required_length:.1f})")
+                continue
+            
             # Use token set ratio for better semantic matching
-            # This handles word order variations and focuses on meaning
             token_set_score = fuzz.token_set_ratio(question_lower, user_input_lower)
             
-            # Higher threshold for fuzzy matching (85% similarity)
-            # This prevents "what is the time" from matching "what is the weather"
-            if token_set_score >= 85:
+            # CRITICAL: High threshold for fuzzy matching (90% similarity)
+            # Prevents partial matches from triggering modules
+            if token_set_score >= 95:
                 # Perfect fuzzy match - starts with 1.0 confidence
                 base_confidence = 1.0
                 
                 # Apply word limit penalty ONLY if user input EXCEEDS max words
-                # If user input has equal or fewer words, no penalty is applied
                 if word_limit_enabled and user_word_count > max_words:
                     extra_words = user_word_count - max_words
                     penalty = extra_words * penalty_per_word
@@ -181,15 +202,17 @@ class StreamingLayer:
                 
                 print(f"🔍 Matched '{question}' with confidence {base_confidence:.2f} (fuzzy score: {token_set_score})")
                 return base_confidence
+            else:
+                print(f"🔍 Fuzzy score too low for '{question}': {token_set_score} < 90")
         
         # No fuzzy containment match found
         return 0.0
     
-    def _find_best_route(self, user_input: str) -> Tuple[Optional[Dict], float]:
+    def _find_best_route(self, user_input: str) -> tuple:
         """
-        Find the best matching routing group for user input using fuzzy containment matching.
+        Find the best matching routing group for user input using strict fuzzy matching.
         Returns (routing_group, confidence_score)
-        Uses strict word limit penalties with fuzzy matching for misspellings.
+        Uses strict length and similarity requirements to prevent false positives.
         """
         if not self.routing_config or not self.routing_config.get('routing_groups'):
             return None, 0.0
@@ -199,8 +222,8 @@ class StreamingLayer:
         
         for group in self.routing_config['routing_groups']:
             word_limit_enabled = group.get('word_limit_enabled', False)
-            max_words = group.get('max_words', 10)  # Default to 10 if not specified
-            penalty_per_word = group.get('penalty_per_word', 0.1)  # Default 10% penalty per extra word
+            max_words = group.get('max_words', 10)
+            penalty_per_word = group.get('penalty_per_word', 0.1)
             
             confidence = self._calculate_fuzzy_containment_confidence(
                 user_input=user_input,
@@ -210,7 +233,7 @@ class StreamingLayer:
                 penalty_per_word=penalty_per_word
             )
             
-            # FIXED: Only use the fixed ROUTING_THRESHOLD, not JSON threshold
+            # FIXED: Only use the fixed ROUTING_THRESHOLD
             if confidence >= self.ROUTING_THRESHOLD and confidence > best_confidence:
                 best_confidence = confidence
                 best_match = group
@@ -227,7 +250,7 @@ class StreamingLayer:
         if self.error_callback:
             self.error_callback(error)
     
-    def _execute_module(self, module_name: str, user_input: str) -> List[Tuple]:
+    def _execute_module(self, module_name: str, user_input: str) -> list:
         """
         Execute a module with the given user input.
         Returns responses in the same format as AI engine.
@@ -264,6 +287,227 @@ class StreamingLayer:
             print(f"❌ {error_msg}")
             self.stream_text(f"Error executing module: {str(e)}\n")
             return [(f"Error executing module: {str(e)}", 0.0, "Module Error")]
+    
+    def _is_valid_module_response(self, responses: list) -> bool:
+        """
+        STRICT MATCHING: Determine if module response indicates valid input handling.
+        Now requires 1.0 confidence for valid responses.
+        Returns True only if the module returns 1.0 confidence.
+        """
+        if not responses:
+            return False
+        
+        # Check if any response has 1.0 confidence
+        for response in responses:
+            if len(response) >= 2 and isinstance(response[1], (int, float)):
+                confidence = response[1]
+                if confidence >= 1.0:  # STRICT: Must have 1.0 confidence
+                    print(f"🔍 Module returned valid response with confidence: {confidence}")
+                    return True
+        
+        # No response with 1.0 confidence found
+        print(f"🔍 No valid module response found (all confidences below 1.0)")
+        return False
+    
+    def _should_activate_module(self, module_name: str) -> bool:
+        """Check if a module should be activated (has module_mode=True)"""
+        try:
+            module = __import__(f"core.modules.{module_name}", fromlist=[''])
+            return getattr(module, 'module_mode', False)
+        except (ImportError, AttributeError):
+            return False
+    
+    def _get_least_used_module(self) -> str:
+        """Get the least used module based on usage counts for eviction"""
+        if not self.active_modules:
+            return None
+        
+        if not self.module_usage_counts:
+            return self.active_modules[0]
+        
+        # Find module with lowest usage count
+        least_used = None
+        min_usage = float('inf')
+        
+        for module_name in self.active_modules:
+            usage = self.module_usage_counts.get(module_name, 0)
+            if usage < min_usage:
+                min_usage = usage
+                least_used = module_name
+        
+        return least_used
+    
+    def _activate_module(self, module_name: str):
+        """Activate a module with module_mode=True"""
+        if module_name in self.active_modules:
+            # Already active, just update usage
+            self.module_usage_counts[module_name] = self.module_usage_counts.get(module_name, 0) + 1
+            return
+        
+        # Check if we need to evict a module due to limit
+        if len(self.active_modules) >= self.module_limit:
+            least_used = self._get_least_used_module()
+            if least_used:
+                self._deactivate_module(least_used)
+                print(f"🔄 Module limit reached, evicted least used module: {least_used}")
+        
+        # Activate the new module
+        self.active_modules.append(module_name)
+        self.module_message_counts[module_name] = 0
+        self.module_usage_counts[module_name] = self.module_usage_counts.get(module_name, 0) + 1
+        
+        print(f"✅ Activated module: {module_name}")
+        print(f"   Active modules: {self.active_modules}")
+    
+    def _deactivate_module(self, module_name: str):
+        """Deactivate a module"""
+        if module_name in self.active_modules:
+            self.active_modules.remove(module_name)
+        
+        if module_name in self.module_message_counts:
+            del self.module_message_counts[module_name]
+        
+        if module_name in self.module_contexts:
+            del self.module_contexts[module_name]
+        
+        print(f"🔴 Deactivated module: {module_name}")
+        print(f"   Active modules: {self.active_modules}")
+    
+    def _has_strict_matching(self, module_name: str) -> bool:
+        """Check if a module has strict matching enabled"""
+        try:
+            module = __import__(f"core.modules.{module_name}", fromlist=[''])
+            return getattr(module, 'strict_matching', False)
+        except (ImportError, AttributeError):
+            return False
+
+    def _is_input_relevant_to_module(self, module_name: str, user_input: str) -> bool:
+        """
+        Check if user input is relevant to a module with strict matching.
+        Uses fuzzy matching to determine relevance.
+        """
+        try:
+            module = __import__(f"core.modules.{module_name}", fromlist=[''])
+            
+            # Check if module defines expected patterns
+            if hasattr(module, 'get_expected_patterns'):
+                patterns = module.get_expected_patterns()
+                input_lower = user_input.lower()
+                
+                # Check for exact matches first
+                for pattern in patterns:
+                    if pattern in input_lower:
+                        return True
+                
+                # Then check fuzzy matches
+                for pattern in patterns:
+                    # Use token set ratio for better semantic matching
+                    similarity = fuzz.token_set_ratio(input_lower, pattern)
+                    if similarity >= 70:  # 70% similarity threshold
+                        print(f"🔍 Fuzzy match: '{user_input}' ~ '{pattern}' ({similarity}%)")
+                        return True
+                
+                return False
+            
+            # If module doesn't define patterns, assume all inputs are relevant
+            return True
+            
+        except (ImportError, AttributeError):
+            return True
+
+    def _try_module_with_validation(self, module_name: str, user_input: str) -> list:
+        """
+        Try a module and validate if it can handle the input.
+        Returns response if valid (confidence >= 1.0), None if module wants to pass to next.
+        Uses STRICT matching for module_mode modules.
+        """
+        try:
+            # Check if this module has strict matching enabled
+            module_has_strict_matching = self._has_strict_matching(module_name)
+            
+            # If module has strict matching, check if input is relevant first
+            if module_has_strict_matching:
+                if not self._is_input_relevant_to_module(module_name, user_input):
+                    print(f"🔍 Module '{module_name}' has strict matching - input not relevant")
+                    # CRITICAL FIX: Increment message count for strict matching rejections
+                    self.module_message_counts[module_name] = self.module_message_counts.get(module_name, 0) + 1
+                    print(f"🔴 Module '{module_name}' strict match rejection, count: {self.module_message_counts[module_name]}")
+                    
+                    # CRITICAL FIX: Check message limit for strict matching rejections too
+                    if self.module_message_counts[module_name] >= self.message_limit:
+                        print(f"🔴 Module '{module_name}' reached message limit from strict matching, deactivating")
+                        self._deactivate_module(module_name)
+                    
+                    return None
+            
+            # Execute module
+            responses = self._execute_module(module_name, user_input)
+            
+            # Check if module returned valid response with 1.0 confidence
+            if self._is_valid_module_response(responses):
+                # Valid input - reset message count and update usage
+                self.module_message_counts[module_name] = 0
+                self.module_usage_counts[module_name] = self.module_usage_counts.get(module_name, 0) + 1
+                
+                # Check if module wants to deactivate itself
+                if self._should_deactivate_module(module_name):
+                    self._deactivate_module(module_name)
+                    print(f"🔴 Module '{module_name}' deactivated itself")
+                
+                return responses
+            else:
+                # Invalid input - increment message count
+                self.module_message_counts[module_name] = self.module_message_counts.get(module_name, 0) + 1
+                print(f"🔴 Module '{module_name}' returned invalid response (confidence < 1.0), count: {self.module_message_counts[module_name]}")
+                
+                # Check if we should deactivate due to inactivity
+                if self.module_message_counts[module_name] >= self.message_limit:
+                    print(f"🔴 Module '{module_name}' reached message limit, deactivating")
+                    self._deactivate_module(module_name)
+                
+                return None
+                
+        except Exception as e:
+            # Module error - deactivate
+            error_msg = f"Error in module '{module_name}': {str(e)}"
+            print(f"❌ {error_msg}")
+            self._deactivate_module(module_name)
+            return None
+    
+    def _should_deactivate_module(self, module_name: str) -> bool:
+        """Check if a module wants to deactivate itself (module_mode=False)"""
+        try:
+            module = __import__(f"core.modules.{module_name}", fromlist=[''])
+            current_mode = getattr(module, 'module_mode', True)
+            if not current_mode:
+                print(f"🔍 Module '{module_name}' has module_mode=False, should deactivate")
+            return not current_mode  # Return True if module_mode is False
+        except (ImportError, AttributeError):
+            return False
+    
+    def _process_through_active_modules(self, user_input: str) -> list:
+        """
+        Process input through ALL active modules in order.
+        Returns first valid response found (with 1.0 confidence), or None if NO module handles it.
+        """
+        if not self.active_modules:
+            return None
+        
+        print(f"🔄 Processing through {len(self.active_modules)} active modules: {self.active_modules}")
+        
+        # Try each active module in order until we find one with 1.0 confidence
+        for module_name in self.active_modules[:]:  # Copy for safe iteration
+            print(f"   Trying module: {module_name}")
+            response = self._try_module_with_validation(module_name, user_input)
+            
+            if response is not None:
+                print(f"   ✅ Module '{module_name}' handled the input with 1.0 confidence")
+                return response
+            else:
+                print(f"   ❌ Module '{module_name}' passed on the input (confidence < 1.0)")
+        
+        print("🔴 No active module handled the input with 1.0 confidence, falling back to routing system")
+        return None
     
     # ===== STREAMING API METHODS =====
     
@@ -387,15 +631,24 @@ class StreamingLayer:
     
     # ===== PUBLIC API FOR GUI =====
     
-    def process_message(self, user_input: str) -> List[Tuple]:
+    def process_message(self, user_input: str) -> list:
         """
-        Process user message through routing system or AI engine.
-        Returns list of responses for the GUI to handle.
+        Process user message through enhanced module system:
+        1. Try all active modules first (module_mode=True) - CASCADE through them
+        2. If no active module handles it with 1.0 confidence, try routing system  
+        3. If routing matches a module with module_mode=True, activate it
+        4. Finally fall back to AI engine
         """
         try:
             self._update_status("Processing your message...")
             
-            # First, try to find a routing match
+            # Step 1: Try active modules first - CASCADE through them
+            module_response = self._process_through_active_modules(user_input)
+            if module_response is not None:
+                self._update_status("Active module handled request")
+                return module_response
+            
+            # Step 2: Try routing system
             route_match, confidence = self._find_best_route(user_input)
             
             if route_match and route_match.get('engine') != "None" and confidence >= self.ROUTING_THRESHOLD:
@@ -403,6 +656,11 @@ class StreamingLayer:
                 module_name = route_match['engine']
                 self._update_status(f"Routing to module: {module_name} (confidence: {confidence:.2f})")
                 
+                # Check if this module should be activated
+                if self._should_activate_module(module_name):
+                    self._activate_module(module_name)
+                
+                # Execute the module
                 responses = self._execute_module(module_name, user_input)
                 
                 # Add routing info to responses
@@ -419,7 +677,7 @@ class StreamingLayer:
                     return []
                 
             else:
-                # No route found or route is "None", use AI engine
+                # Step 3: Fall back to AI engine
                 if route_match and confidence < self.ROUTING_THRESHOLD:
                     self._update_status(f"Routing confidence too low ({confidence:.2f} < {self.ROUTING_THRESHOLD}), using AI engine")
                 elif route_match:
@@ -484,11 +742,17 @@ class StreamingLayer:
     
     def get_statistics(self) -> dict:
         """Get chatbot performance statistics"""
-        return self.ai_engine.performance_stats
+        stats = self.ai_engine.performance_stats
+        stats['active_modules'] = len(self.active_modules)
+        stats['module_usage'] = self.module_usage_counts
+        stats['module_message_counts'] = self.module_message_counts
+        return stats
     
     def reset_conversation(self):
         """Reset conversation context"""
         self.ai_engine.reset_conversation_context()
+        # Clear module contexts but keep active modules
+        self.module_contexts = {}
         self._update_status("Conversation reset")
     
     def get_current_model(self) -> str:
@@ -525,7 +789,7 @@ class StreamingLayer:
         self.speed_limit = not self.speed_limit
         self.save_configuration()
     
-    def get_configuration(self) -> Dict[str, Any]:
+    def get_configuration(self) -> dict:
         """Get current configuration"""
         routing_stats = self.get_routing_stats()
         
@@ -539,9 +803,11 @@ class StreamingLayer:
             'qa_groups_count': self.get_qa_groups_count(),
             'routing_groups_count': routing_stats['total_groups'],
             'routing_questions_count': routing_stats['total_questions'],
-            'active_modules_count': routing_stats['active_modules'],
+            'active_modules_count': len(self.active_modules),
             'available_modules': self.get_available_modules(),
-            'routing_threshold': self.ROUTING_THRESHOLD
+            'routing_threshold': self.ROUTING_THRESHOLD,
+            'module_limit': self.module_limit,
+            'message_limit': self.message_limit
         }
     
     def stop_streaming(self):
@@ -557,11 +823,11 @@ class StreamingLayer:
     
     # ===== ROUTING SYSTEM METHODS =====
     
-    def get_routing_groups(self) -> List[Dict]:
+    def get_routing_groups(self) -> list:
         """Get all routing groups"""
         return self.routing_config.get('routing_groups', []) if self.routing_config else []
     
-    def add_routing_group(self, group_data: Dict) -> bool:
+    def add_routing_group(self, group_data: dict) -> bool:
         """Add a new routing group"""
         if not self.routing_config:
             self.routing_config = {"routing_groups": [], "available_engines": [], "version": "1.0"}
@@ -575,7 +841,7 @@ class StreamingLayer:
         
         return self.save_routing_config()
     
-    def update_routing_group(self, index: int, group_data: Dict) -> bool:
+    def update_routing_group(self, index: int, group_data: dict) -> bool:
         """Update an existing routing group"""
         if not self.routing_config or index >= len(self.routing_config['routing_groups']):
             return False
@@ -615,7 +881,7 @@ class StreamingLayer:
         """Reload routing configuration from file"""
         self.load_routing_config()
     
-    def get_routing_stats(self) -> Dict[str, Any]:
+    def get_routing_stats(self) -> dict:
         """Get routing system statistics"""
         groups = self.get_routing_groups()
         total_questions = sum(len(group.get('questions', [])) for group in groups)
@@ -628,7 +894,7 @@ class StreamingLayer:
             'modules_list': list(active_modules)
         }
     
-    def test_routing_match(self, user_input: str) -> Dict[str, Any]:
+    def test_routing_match(self, user_input: str) -> dict:
         """
         Test routing matching for a given input without executing.
         Useful for debugging and testing.
@@ -655,7 +921,7 @@ class StreamingLayer:
         
         return result
     
-    def get_available_modules(self) -> List[str]:
+    def get_available_modules(self) -> list:
         """Get list of available modules from core/modules folder"""
         modules_folder = "core/modules"
         modules = []
@@ -667,6 +933,33 @@ class StreamingLayer:
                     modules.append(module_name)
         
         return sorted(modules)
+    
+    def get_active_modules(self) -> list:
+        """Get list of currently active modules"""
+        return self.active_modules.copy()
+    
+    def deactivate_module(self, module_name: str) -> bool:
+        """Manually deactivate a module"""
+        if module_name in self.active_modules:
+            self._deactivate_module(module_name)
+            return True
+        return False
+    
+    def set_module_limit(self, limit: int):
+        """Set the maximum number of active modules"""
+        self.module_limit = max(1, limit)  # At least 1 module
+        print(f"✅ Module limit set to: {self.module_limit}")
+        
+        # Enforce new limit by deactivating excess modules
+        while len(self.active_modules) > self.module_limit:
+            least_used = self._get_least_used_module()
+            if least_used:
+                self._deactivate_module(least_used)
+    
+    def set_message_limit(self, limit: int):
+        """Set the message limit for module deactivation"""
+        self.message_limit = max(1, limit)  # At least 1 message
+        print(f"✅ Message limit set to: {self.message_limit}")
 
 
 class StreamingAPI:
@@ -699,13 +992,25 @@ class StreamingAPI:
         """Signal that response is complete"""
         self.layer.complete_response()
     
-    def get_config(self) -> Dict[str, Any]:
+    def get_config(self) -> dict:
         """Get current configuration"""
         return self.layer.get_configuration()
     
     def get_module_name(self) -> str:
         """Get the name of the current module"""
         return self.module_name
+    
+    def get_module_context(self) -> dict:
+        """Get context data for this module"""
+        return self.layer.module_contexts.get(self.module_name, {})
+    
+    def set_module_context(self, context: dict):
+        """Set context data for this module"""
+        self.layer.module_contexts[self.module_name] = context
+    
+    def deactivate_self(self):
+        """Allow module to deactivate itself"""
+        self.layer._deactivate_module(self.module_name)
 
 
 # Factory function for easy creation
