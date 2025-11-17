@@ -655,35 +655,342 @@ class RoutingGroupEditor:
         self.window.destroy()
 
 
+class WordVariantEditor:
+    """Dialog for editing word variants"""
+    
+    def __init__(self, parent, variant_data=None, on_save=None):
+        self.window = tk.Toplevel(parent)
+        self.window.title("Word Variant Editor")
+        self.window.geometry("600x500")
+        self.window.configure(bg='#2d2d5a')
+        self.window.minsize(500, 400)
+        
+        self.on_save = on_save
+        self.variant_data = variant_data or {}
+        
+        self.variants = []
+        self.validation_errors = []
+        
+        self.setup_ui()
+        
+        if variant_data:
+            self.load_data()
+        
+        self.window.transient(parent)
+        self.window.grab_set()
+        self.center_window(parent)
+    
+    def center_window(self, parent):
+        self.window.update_idletasks()
+        x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
+        y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
+        self.window.geometry(f"+{x}+{y}")
+    
+    def setup_ui(self):
+        # Configure grid weights
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=1)
+        
+        # Title
+        tk.Label(
+            self.window,
+            text="Word Variant Editor",
+            font=('Arial', 16, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w', padx=20, pady=(20, 10))
+        
+        # Main content frame
+        content_frame = tk.Frame(self.window, bg='#2d2d5a')
+        content_frame.grid(row=1, column=0, sticky='nsew', padx=20, pady=10)
+        content_frame.grid_columnconfigure(1, weight=1)
+        
+        # Base word
+        tk.Label(
+            content_frame,
+            text="Base Word:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w', pady=(0, 8))
+        
+        self.base_word_var = tk.StringVar()
+        self.base_word_entry = tk.Entry(
+            content_frame,
+            textvariable=self.base_word_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white'
+        )
+        self.base_word_entry.grid(row=0, column=1, sticky='ew', pady=(0, 15))
+        self.base_word_entry.focus_set()
+        
+        # Variants section
+        variants_frame = tk.Frame(content_frame, bg='#252547', relief='raised', bd=1)
+        variants_frame.grid(row=1, column=0, columnspan=2, sticky='nsew', pady=(0, 15))
+        variants_frame.grid_columnconfigure(0, weight=1)
+        variants_frame.grid_rowconfigure(1, weight=1)
+        
+        # Variants header
+        variants_header = tk.Frame(variants_frame, bg='#252547')
+        variants_header.grid(row=0, column=0, sticky='ew', padx=10, pady=8)
+        variants_header.grid_columnconfigure(0, weight=1)
+        
+        tk.Label(
+            variants_header,
+            text="Word Variants",
+            font=('Arial', 12, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w')
+        
+        tk.Button(
+            variants_header,
+            text="+ Add Variant",
+            command=self.add_variant,
+            bg='#6c63ff',
+            fg='white',
+            font=('Arial', 9),
+            padx=8
+        ).grid(row=0, column=1)
+        
+        # Variants list container
+        list_container = tk.Frame(variants_frame, bg='#252547')
+        list_container.grid(row=1, column=0, sticky='nsew', padx=10, pady=(0, 8))
+        list_container.grid_columnconfigure(0, weight=1)
+        list_container.grid_rowconfigure(0, weight=1)
+        
+        self.variants_listbox = tk.Listbox(
+            list_container,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='white',
+            selectbackground='#6c63ff',
+            activestyle='none',
+            height=6
+        )
+        self.variants_listbox.grid(row=0, column=0, sticky='nsew')
+        
+        # Scrollbar for variants
+        variants_scrollbar = tk.Scrollbar(list_container, orient=tk.VERTICAL, 
+                                        command=self.variants_listbox.yview,
+                                        bg='#2d2d5a', troughcolor='#1a1a2e', 
+                                        activebackground='#6c63ff')
+        self.variants_listbox.config(yscrollcommand=variants_scrollbar.set)
+        variants_scrollbar.grid(row=0, column=1, sticky='ns')
+        
+        # Variant actions
+        variant_actions = tk.Frame(variants_frame, bg='#252547')
+        variant_actions.grid(row=2, column=0, sticky='ew', padx=10, pady=(0, 8))
+        
+        tk.Button(
+            variant_actions,
+            text="Edit",
+            command=self.edit_variant,
+            bg='#00d4ff',
+            fg='black',
+            font=('Arial', 9),
+            width=8
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        tk.Button(
+            variant_actions,
+            text="Delete",
+            command=self.delete_variant,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 9),
+            width=8
+        ).pack(side=tk.LEFT)
+        
+        # Validation error display
+        self.validation_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        self.validation_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(0, 10))
+        self.validation_label = tk.Label(
+            self.validation_frame,
+            text="",
+            font=('Arial', 9),
+            bg='#2d2d5a',
+            fg='#ff6b6b',
+            wraplength=600,
+            justify=tk.LEFT
+        )
+        self.validation_label.pack(anchor='w')
+        
+        # Instructions
+        instructions_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        instructions_frame.grid(row=3, column=0, columnspan=2, sticky='ew', pady=(0, 15))
+        
+        instructions = tk.Label(
+            instructions_frame,
+            text="💡 Word variants allow the system to recognize different forms of the same word.\nFor example: 'run' can have variants 'running', 'ran', 'runs'.",
+            font=('Arial', 9),
+            bg='#2d2d5a',
+            fg='#b0b0d0',
+            justify=tk.LEFT
+        )
+        instructions.pack(anchor='w')
+        
+        # Buttons frame
+        button_frame = tk.Frame(self.window, bg='#2d2d5a')
+        button_frame.grid(row=2, column=0, sticky='e', padx=20, pady=(0, 20))
+        
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=self.window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT, padx=(10, 0))
+        
+        self.save_button = tk.Button(
+            button_frame,
+            text="💾 Save Variants",
+            command=self.save_variants,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        )
+        self.save_button.pack(side=tk.RIGHT)
+        
+        # Configure content frame row weights
+        content_frame.grid_rowconfigure(1, weight=1)
+        
+        # Bind events
+        self.base_word_var.trace('w', self.validate_form)
+    
+    def validate_form(self, *args):
+        """Validate the entire form"""
+        errors = []
+        
+        # Check base word
+        if not self.base_word_var.get().strip():
+            errors.append("Base word is required")
+        
+        # Check variants
+        if not self.variants:
+            errors.append("At least one variant is required")
+        
+        # Update validation display
+        if errors:
+            self.validation_label.config(text=" • " + "\n • ".join(errors))
+            self.save_button.config(state='disabled', bg='#8080a0')
+        else:
+            self.validation_label.config(text="")
+            self.save_button.config(state='normal', bg='#00ff88')
+        
+        return len(errors) == 0
+    
+    def add_variant(self):
+        """Add a new variant using text editor popup"""
+        def save_variant(text):
+            self.variants.append(text)
+            self.refresh_variants_list()
+            self.validate_form()
+        
+        QuestionAnswerEditor(self.window, "variant", on_save=save_variant)
+    
+    def edit_variant(self):
+        """Edit selected variant using text editor popup"""
+        selection = self.variants_listbox.curselection()
+        if not selection:
+            return
+        
+        index = selection[0]
+        current_text = self.variants[index]
+        
+        def save_variant(text):
+            self.variants[index] = text
+            self.refresh_variants_list()
+            self.validate_form()
+        
+        QuestionAnswerEditor(self.window, "variant", current_text, save_variant)
+    
+    def delete_variant(self):
+        """Delete selected variant"""
+        selection = self.variants_listbox.curselection()
+        if selection:
+            index = selection[0]
+            self.variants.pop(index)
+            self.refresh_variants_list()
+            self.validate_form()
+    
+    def refresh_variants_list(self):
+        """Refresh the variants listbox"""
+        self.variants_listbox.delete(0, tk.END)
+        for variant in self.variants:
+            # Truncate long variants for display
+            display_text = variant[:60] + "..." if len(variant) > 60 else variant
+            self.variants_listbox.insert(tk.END, display_text)
+    
+    def load_data(self):
+        if 'base_word' in self.variant_data:
+            self.base_word_var.set(self.variant_data['base_word'])
+        
+        # Load variants
+        if 'variants' in self.variant_data:
+            self.variants = self.variant_data['variants']
+            self.refresh_variants_list()
+        
+        self.validate_form()
+    
+    def save_variants(self):
+        if not self.validate_form():
+            return
+        
+        base_word = self.base_word_var.get().strip()
+        
+        variant_data = {
+            'base_word': base_word,
+            'variants': self.variants
+        }
+        
+        if self.on_save:
+            self.on_save(variant_data)
+        
+        self.window.destroy()
+
+
 class RoutingTrainerGUI:
-    """Main routing trainer GUI"""
+    """Main routing trainer GUI with tabs for routing groups and word variants"""
     
     def __init__(self, root):
         self.root = root
         self.root.title("Edgar AI - Routing Trainer")
         self.root.geometry("1200x700")
         self.root.configure(bg='#1a1a2e')
-        self.root.minsize(1000, 600)  # More strict minimum size
+        self.root.minsize(1000, 600)
         
         self.routing_file = "resources/route.json"
+        self.variants_file = "resources/word_variants.json"
         self.routing_groups = []
-        self.current_columns = 4
-        self.min_card_width = 300  # Wider for rectangular tiles
-        self.min_card_height = 140  # Slightly taller for more info
-        self.card_padding = 12
-        self.group_name_limit = 35  # Character limit for group names
+        self.word_variants = []
         
-        # Ensure resources folder exists and create default config
+        # Card display settings
+        self.current_columns = 4
+        self.min_card_width = 300
+        self.min_card_height = 140
+        self.card_padding = 12
+        self.group_name_limit = 35
+        self.variant_name_limit = 35
+        
+        # Ensure resources folder exists and create default configs
         self.ensure_resources_folder()
         self.load_routing_data()
+        self.load_variants_data()
         self.setup_gui()
-        self.refresh_groups()
     
     def ensure_resources_folder(self):
-        """Ensure resources folder exists and create default config if needed"""
+        """Ensure resources folder exists and create default configs if needed"""
         os.makedirs("resources", exist_ok=True)
         
-        # Create default config if it doesn't exist
+        # Create default routing config if it doesn't exist
         if not os.path.exists(self.routing_file):
             default_config = {
                 "routing_groups": [],
@@ -695,7 +1002,20 @@ class RoutingTrainerGUI:
                     json.dump(default_config, f, indent=2, ensure_ascii=False)
                 print("✅ Created default routing configuration")
             except Exception as e:
-                print(f"❌ Error creating default config: {e}")
+                print(f"❌ Error creating routing config: {e}")
+        
+        # Create default variants config if it doesn't exist
+        if not os.path.exists(self.variants_file):
+            default_variants = {
+                "word_variants": [],
+                "version": "1.0"
+            }
+            try:
+                with open(self.variants_file, 'w', encoding='utf-8') as f:
+                    json.dump(default_variants, f, indent=2, ensure_ascii=False)
+                print("✅ Created default word variants configuration")
+            except Exception as e:
+                print(f"❌ Error creating variants config: {e}")
     
     def load_routing_data(self):
         """Load routing configuration from file"""
@@ -711,6 +1031,21 @@ class RoutingTrainerGUI:
         else:
             print("⚠️  No routing config found, starting fresh")
             self.routing_groups = []
+    
+    def load_variants_data(self):
+        """Load word variants configuration from file"""
+        if os.path.exists(self.variants_file):
+            try:
+                with open(self.variants_file, 'r', encoding='utf-8') as f:
+                    config = json.load(f)
+                self.word_variants = config.get('word_variants', [])
+                print(f"✅ Loaded {len(self.word_variants)} word variant sets")
+            except Exception as e:
+                print(f"❌ Error loading variants config: {e}")
+                self.word_variants = []
+        else:
+            print("⚠️  No variants config found, starting fresh")
+            self.word_variants = []
     
     def save_routing_data(self):
         """Save routing configuration to file"""
@@ -729,6 +1064,22 @@ class RoutingTrainerGUI:
             print(f"❌ Error saving routing config: {e}")
             return False
     
+    def save_variants_data(self):
+        """Save word variants configuration to file"""
+        config = {
+            "word_variants": self.word_variants,
+            "version": "1.0"
+        }
+        
+        try:
+            with open(self.variants_file, 'w', encoding='utf-8') as f:
+                json.dump(config, f, indent=2, ensure_ascii=False)
+            print("✅ Word variants configuration saved")
+            return True
+        except Exception as e:
+            print(f"❌ Error saving variants config: {e}")
+            return False
+    
     def setup_gui(self):
         # Configure main window grid
         self.root.grid_columnconfigure(0, weight=1)
@@ -737,11 +1088,10 @@ class RoutingTrainerGUI:
         main_frame = tk.Frame(self.root, bg='#1a1a2e')
         main_frame.grid(row=0, column=0, sticky='nsew', padx=15, pady=15)
         main_frame.grid_columnconfigure(0, weight=1)
-        main_frame.grid_rowconfigure(2, weight=1)
+        main_frame.grid_rowconfigure(1, weight=1)
         
         self.setup_header(main_frame)
-        self.setup_toolbar(main_frame)
-        self.setup_groups_grid(main_frame)
+        self.setup_notebook(main_frame)
     
     def setup_header(self, parent):
         header = tk.Frame(parent, bg='#1a1a2e')
@@ -751,7 +1101,7 @@ class RoutingTrainerGUI:
         # Title
         tk.Label(
             header,
-            text="🚦 Routing Configuration",
+            text="🚦 Routing & Word Variants Configuration",
             font=('Arial', 20, 'bold'),
             bg='#1a1a2e',
             fg='white'
@@ -762,7 +1112,7 @@ class RoutingTrainerGUI:
         stats_frame.grid(row=1, column=0, sticky='w', pady=(10, 0))
         
         self.stats_vars = {}
-        stats = [("Routing Groups", "0"), ("Active Modules", "0"), ("Total Questions", "0")]
+        stats = [("Routing Groups", "0"), ("Word Variant Sets", "0"), ("Active Modules", "0"), ("Total Questions", "0")]
         
         for i, (label, value) in enumerate(stats):
             frame = tk.Frame(stats_frame, bg='#1a1a2e')
@@ -787,9 +1137,51 @@ class RoutingTrainerGUI:
             
             self.stats_vars[label] = var
     
-    def setup_toolbar(self, parent):
-        toolbar = tk.Frame(parent, bg='#1a1a2e')
-        toolbar.grid(row=1, column=0, sticky='ew', pady=(0, 15))
+    def setup_notebook(self, parent):
+        """Setup tabbed interface"""
+        # Create custom style for notebook
+        style = ttk.Style()
+        style.theme_use('clam')
+        
+        # Configure notebook style
+        style.configure('Custom.TNotebook',
+            background='#1a1a2e',
+            borderwidth=0
+        )
+        style.configure('Custom.TNotebook.Tab',
+            background='#2d2d5a',
+            foreground='white',
+            padding=[15, 5],
+            font=('Arial', 10, 'bold')
+        )
+        style.map('Custom.TNotebook.Tab',
+            background=[('selected', '#6c63ff'), ('active', '#6c63ff')],
+            foreground=[('selected', 'white'), ('active', 'white')]
+        )
+        
+        # Create notebook
+        self.notebook = ttk.Notebook(parent, style='Custom.TNotebook')
+        self.notebook.grid(row=1, column=0, sticky='nsew')
+        
+        # Create tabs
+        self.routing_tab = self.create_routing_tab()
+        self.variants_tab = self.create_variants_tab()
+        
+        self.notebook.add(self.routing_tab, text="🚦 Routing Groups")
+        self.notebook.add(self.variants_tab, text="🔤 Word Variants")
+        
+        # Bind tab change event
+        self.notebook.bind('<<NotebookTabChanged>>', self.on_tab_changed)
+    
+    def create_routing_tab(self):
+        """Create the routing groups tab"""
+        tab = tk.Frame(self.notebook, bg='#1a1a2e')
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+        
+        # Toolbar
+        toolbar = tk.Frame(tab, bg='#1a1a2e')
+        toolbar.grid(row=0, column=0, sticky='ew', pady=(0, 15))
         toolbar.grid_columnconfigure(1, weight=1)
         
         # Search area
@@ -804,10 +1196,10 @@ class RoutingTrainerGUI:
             font=('Arial', 9)
         ).pack(side=tk.LEFT)
         
-        self.search_var = tk.StringVar()
+        self.routing_search_var = tk.StringVar()
         search_entry = tk.Entry(
             search_frame,
-            textvariable=self.search_var,
+            textvariable=self.routing_search_var,
             width=25,
             bg='#2d2d5a',
             fg='white',
@@ -817,7 +1209,7 @@ class RoutingTrainerGUI:
         search_entry.pack(side=tk.LEFT, padx=(5, 10))
         
         # Bind search for real-time filtering
-        self.search_var.trace('w', self.on_search)
+        self.routing_search_var.trace('w', self.on_routing_search)
         
         # Action buttons
         actions = tk.Frame(toolbar, bg='#1a1a2e')
@@ -826,7 +1218,7 @@ class RoutingTrainerGUI:
         tk.Button(
             actions,
             text="🔄 Refresh",
-            command=self.refresh_groups,
+            command=self.refresh_routing_groups,
             bg='#00d4ff',
             fg='black',
             font=('Arial', 9),
@@ -836,27 +1228,99 @@ class RoutingTrainerGUI:
         tk.Button(
             actions,
             text="+ New Routing Group",
-            command=self.new_group,
+            command=self.new_routing_group,
             bg='#00ff88',
             fg='black',
             font=('Arial', 10, 'bold'),
             padx=15
         ).pack(side=tk.LEFT)
+        
+        # Groups grid
+        self.setup_routing_grid(tab)
+        
+        return tab
     
-    def setup_groups_grid(self, parent):
-        """Setup responsive groups display"""
+    def create_variants_tab(self):
+        """Create the word variants tab"""
+        tab = tk.Frame(self.notebook, bg='#1a1a2e')
+        tab.grid_columnconfigure(0, weight=1)
+        tab.grid_rowconfigure(1, weight=1)
+        
+        # Toolbar
+        toolbar = tk.Frame(tab, bg='#1a1a2e')
+        toolbar.grid(row=0, column=0, sticky='ew', pady=(0, 15))
+        toolbar.grid_columnconfigure(1, weight=1)
+        
+        # Search area
+        search_frame = tk.Frame(toolbar, bg='#1a1a2e')
+        search_frame.grid(row=0, column=0, sticky='w')
+        
+        tk.Label(
+            search_frame,
+            text="Search:",
+            bg='#1a1a2e',
+            fg='white',
+            font=('Arial', 9)
+        ).pack(side=tk.LEFT)
+        
+        self.variants_search_var = tk.StringVar()
+        search_entry = tk.Entry(
+            search_frame,
+            textvariable=self.variants_search_var,
+            width=25,
+            bg='#2d2d5a',
+            fg='white',
+            insertbackground='white',
+            font=('Arial', 9)
+        )
+        search_entry.pack(side=tk.LEFT, padx=(5, 10))
+        
+        # Bind search for real-time filtering
+        self.variants_search_var.trace('w', self.on_variants_search)
+        
+        # Action buttons
+        actions = tk.Frame(toolbar, bg='#1a1a2e')
+        actions.grid(row=0, column=1, sticky='e')
+        
+        tk.Button(
+            actions,
+            text="🔄 Refresh",
+            command=self.refresh_variants,
+            bg='#00d4ff',
+            fg='black',
+            font=('Arial', 9),
+            padx=12
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        
+        tk.Button(
+            actions,
+            text="+ New Word Variants",
+            command=self.new_word_variants,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=15
+        ).pack(side=tk.LEFT)
+        
+        # Variants grid
+        self.setup_variants_grid(tab)
+        
+        return tab
+    
+    def setup_routing_grid(self, parent):
+        """Setup responsive routing groups display"""
         container = tk.Frame(parent, bg='#1a1a2e')
-        container.grid(row=2, column=0, sticky='nsew')
+        container.grid(row=1, column=0, sticky='nsew')
         container.grid_columnconfigure(0, weight=1)
         container.grid_rowconfigure(0, weight=1)
         
-        self.canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
+        self.routing_canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
         
         # Scrollbar
-        self.scrollbar = tk.Scrollbar(
+        self.routing_scrollbar = tk.Scrollbar(
             container, 
             orient=tk.VERTICAL, 
-            command=self.canvas.yview,
+            command=self.routing_canvas.yview,
             bg='#2d2d5a', 
             troughcolor='#1a1a2e', 
             activebackground='#6c63ff',
@@ -864,39 +1328,91 @@ class RoutingTrainerGUI:
         )
         
         # Main scrollable frame
-        self.scroll_frame = tk.Frame(self.canvas, bg='#1a1a2e')
-        self.scroll_frame.bind(
+        self.routing_scroll_frame = tk.Frame(self.routing_canvas, bg='#1a1a2e')
+        self.routing_scroll_frame.bind(
             "<Configure>",
-            lambda e: self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+            lambda e: self.routing_canvas.configure(scrollregion=self.routing_canvas.bbox("all"))
         )
         
-        self.canvas.create_window((0, 0), window=self.scroll_frame, anchor="nw")
-        self.canvas.configure(yscrollcommand=self.scrollbar.set)
+        self.routing_canvas.create_window((0, 0), window=self.routing_scroll_frame, anchor="nw")
+        self.routing_canvas.configure(yscrollcommand=self.routing_scrollbar.set)
         
-        self.canvas.grid(row=0, column=0, sticky='nsew')
-        self.scrollbar.grid(row=0, column=1, sticky='ns')
+        self.routing_canvas.grid(row=0, column=0, sticky='nsew')
+        self.routing_scrollbar.grid(row=0, column=1, sticky='ns')
         
         # Groups container inside scroll frame
-        self.groups_container = tk.Frame(self.scroll_frame, bg='#1a1a2e')
-        self.groups_container.pack(fill='both', expand=True, padx=10, pady=10)
+        self.routing_groups_container = tk.Frame(self.routing_scroll_frame, bg='#1a1a2e')
+        self.routing_groups_container.pack(fill='both', expand=True, padx=10, pady=10)
         
         # Bind resize event for responsive layout
-        self.canvas.bind("<Configure>", self.on_canvas_resize)
-        self.canvas.bind("<MouseWheel>", self.on_mousewheel)
-        self.scroll_frame.bind("<MouseWheel>", self.on_mousewheel)
-        self.groups_container.bind("<MouseWheel>", self.on_mousewheel)
+        self.routing_canvas.bind("<Configure>", self.on_routing_canvas_resize)
+        self.routing_canvas.bind("<MouseWheel>", self.on_routing_mousewheel)
+        self.routing_scroll_frame.bind("<MouseWheel>", self.on_routing_mousewheel)
+        self.routing_groups_container.bind("<MouseWheel>", self.on_routing_mousewheel)
     
-    def on_canvas_resize(self, event):
-        """Handle canvas resize to adjust grid columns"""
-        if hasattr(self, 'groups_container') and self.groups_container.winfo_children():
-            self.refresh_groups_layout()
+    def setup_variants_grid(self, parent):
+        """Setup responsive word variants display"""
+        container = tk.Frame(parent, bg='#1a1a2e')
+        container.grid(row=1, column=0, sticky='nsew')
+        container.grid_columnconfigure(0, weight=1)
+        container.grid_rowconfigure(0, weight=1)
+        
+        self.variants_canvas = tk.Canvas(container, bg='#1a1a2e', highlightthickness=0)
+        
+        # Scrollbar
+        self.variants_scrollbar = tk.Scrollbar(
+            container, 
+            orient=tk.VERTICAL, 
+            command=self.variants_canvas.yview,
+            bg='#2d2d5a', 
+            troughcolor='#1a1a2e', 
+            activebackground='#6c63ff',
+            width=16
+        )
+        
+        # Main scrollable frame
+        self.variants_scroll_frame = tk.Frame(self.variants_canvas, bg='#1a1a2e')
+        self.variants_scroll_frame.bind(
+            "<Configure>",
+            lambda e: self.variants_canvas.configure(scrollregion=self.variants_canvas.bbox("all"))
+        )
+        
+        self.variants_canvas.create_window((0, 0), window=self.variants_scroll_frame, anchor="nw")
+        self.variants_canvas.configure(yscrollcommand=self.variants_scrollbar.set)
+        
+        self.variants_canvas.grid(row=0, column=0, sticky='nsew')
+        self.variants_scrollbar.grid(row=0, column=1, sticky='ns')
+        
+        # Variants container inside scroll frame
+        self.variants_container = tk.Frame(self.variants_scroll_frame, bg='#1a1a2e')
+        self.variants_container.pack(fill='both', expand=True, padx=10, pady=10)
+        
+        # Bind resize event for responsive layout
+        self.variants_canvas.bind("<Configure>", self.on_variants_canvas_resize)
+        self.variants_canvas.bind("<MouseWheel>", self.on_variants_mousewheel)
+        self.variants_scroll_frame.bind("<MouseWheel>", self.on_variants_mousewheel)
+        self.variants_container.bind("<MouseWheel>", self.on_variants_mousewheel)
     
-    def on_mousewheel(self, event):
-        self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    def on_tab_changed(self, event):
+        """Handle tab change events"""
+        current_tab = self.notebook.tab(self.notebook.select(), "text")
+        if current_tab == "🚦 Routing Groups":
+            self.refresh_routing_groups()
+        elif current_tab == "🔤 Word Variants":
+            self.refresh_variants()
     
-    def on_search(self, *args):
-        """Handle real-time search"""
-        search_term = self.search_var.get().lower()
+    # Routing Groups Methods
+    def on_routing_canvas_resize(self, event):
+        """Handle routing canvas resize to adjust grid columns"""
+        if hasattr(self, 'routing_groups_container') and self.routing_groups_container.winfo_children():
+            self.refresh_routing_layout()
+    
+    def on_routing_mousewheel(self, event):
+        self.routing_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    
+    def on_routing_search(self, *args):
+        """Handle real-time search in routing groups"""
+        search_term = self.routing_search_var.get().lower()
         filtered_groups = []
         
         for group in self.routing_groups:
@@ -906,24 +1422,24 @@ class RoutingTrainerGUI:
                 any(search_term in q.lower() for q in group['questions'])):
                 filtered_groups.append(group)
         
-        self.display_filtered_groups(filtered_groups if search_term else self.routing_groups)
+        self.display_filtered_routing_groups(filtered_groups if search_term else self.routing_groups)
     
-    def display_filtered_groups(self, filtered_groups):
-        """Display filtered groups"""
+    def display_filtered_routing_groups(self, filtered_groups):
+        """Display filtered routing groups"""
         # Clear existing cards
-        for widget in self.groups_container.winfo_children():
+        for widget in self.routing_groups_container.winfo_children():
             widget.destroy()
         
         # Calculate responsive columns
-        columns = self.calculate_columns()
+        columns = self.calculate_routing_columns()
         
         # Configure grid columns
         for i in range(columns):
-            self.groups_container.grid_columnconfigure(i, weight=1)
+            self.routing_groups_container.grid_columnconfigure(i, weight=1)
         
         # Create group cards
         for i, group in enumerate(filtered_groups):
-            card = self.create_group_card(group)
+            card = self.create_routing_group_card(group)
             
             # Arrange in responsive grid
             row = i // columns
@@ -947,14 +1463,14 @@ class RoutingTrainerGUI:
         self.stats_vars["Total Questions"].set(str(total_questions))
         
         # Update scroll region
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.routing_canvas.configure(scrollregion=self.routing_canvas.bbox("all"))
     
-    def calculate_columns(self):
-        """Calculate optimal number of columns based on available width"""
-        if not hasattr(self, 'canvas') or not self.canvas.winfo_exists():
+    def calculate_routing_columns(self):
+        """Calculate optimal number of columns for routing groups based on available width"""
+        if not hasattr(self, 'routing_canvas') or not self.routing_canvas.winfo_exists():
             return 3
         
-        canvas_width = self.canvas.winfo_width()
+        canvas_width = self.routing_canvas.winfo_width()
         if canvas_width <= 1:  # Canvas not yet rendered
             return 3
         
@@ -965,23 +1481,23 @@ class RoutingTrainerGUI:
         
         return max_columns
     
-    def refresh_groups_layout(self):
-        """Refresh just the layout without recreating cards"""
-        if not self.groups_container.winfo_children():
+    def refresh_routing_layout(self):
+        """Refresh just the routing layout without recreating cards"""
+        if not self.routing_groups_container.winfo_children():
             return
             
-        columns = self.calculate_columns()
+        columns = self.calculate_routing_columns()
         
         # Clear current grid
-        for widget in self.groups_container.grid_slaves():
+        for widget in self.routing_groups_container.grid_slaves():
             widget.grid_forget()
         
         # Reconfigure grid columns
         for i in range(columns):
-            self.groups_container.grid_columnconfigure(i, weight=1)
+            self.routing_groups_container.grid_columnconfigure(i, weight=1)
         
         # Rearrange existing cards
-        cards = self.groups_container.winfo_children()
+        cards = self.routing_groups_container.winfo_children()
         for i, card in enumerate(cards):
             row = i // columns
             col = i % columns
@@ -994,16 +1510,16 @@ class RoutingTrainerGUI:
             )
         
         self.current_columns = columns
-        self.canvas.configure(scrollregion=self.canvas.bbox("all"))
+        self.routing_canvas.configure(scrollregion=self.routing_canvas.bbox("all"))
     
-    def refresh_groups(self):
-        """Refresh groups display"""
-        self.display_filtered_groups(self.routing_groups)
+    def refresh_routing_groups(self):
+        """Refresh routing groups display"""
+        self.display_filtered_routing_groups(self.routing_groups)
     
-    def create_group_card(self, group):
+    def create_routing_group_card(self, group):
         """Create a rectangular routing group card widget"""
         card = tk.Frame(
-            self.groups_container, 
+            self.routing_groups_container, 
             bg='#252547', 
             relief='raised', 
             bd=1,
@@ -1048,7 +1564,7 @@ class RoutingTrainerGUI:
         edit_btn = tk.Button(
             button_frame,
             text="✏️",
-            command=lambda: self.edit_group(self.routing_groups.index(group_ref)),
+            command=lambda: self.edit_routing_group(self.routing_groups.index(group_ref)),
             bg='#6c63ff',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -1062,7 +1578,7 @@ class RoutingTrainerGUI:
         delete_btn = tk.Button(
             button_frame,
             text="🗑️",
-            command=lambda: self.delete_group(self.routing_groups.index(group_ref)),
+            command=lambda: self.delete_routing_group(self.routing_groups.index(group_ref)),
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -1178,6 +1694,228 @@ class RoutingTrainerGUI:
         
         return card
     
+    # Word Variants Methods
+    def on_variants_canvas_resize(self, event):
+        """Handle variants canvas resize to adjust grid columns"""
+        if hasattr(self, 'variants_container') and self.variants_container.winfo_children():
+            self.refresh_variants_layout()
+    
+    def on_variants_mousewheel(self, event):
+        self.variants_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+    
+    def on_variants_search(self, *args):
+        """Handle real-time search in word variants"""
+        search_term = self.variants_search_var.get().lower()
+        filtered_variants = []
+        
+        for variant_set in self.word_variants:
+            # Search in base word and variants
+            if (search_term in variant_set['base_word'].lower() or
+                any(search_term in v.lower() for v in variant_set['variants'])):
+                filtered_variants.append(variant_set)
+        
+        self.display_filtered_variants(filtered_variants if search_term else self.word_variants)
+    
+    def display_filtered_variants(self, filtered_variants):
+        """Display filtered word variants"""
+        # Clear existing cards
+        for widget in self.variants_container.winfo_children():
+            widget.destroy()
+        
+        # Calculate responsive columns
+        columns = self.calculate_variants_columns()
+        
+        # Configure grid columns
+        for i in range(columns):
+            self.variants_container.grid_columnconfigure(i, weight=1)
+        
+        # Create variant cards
+        for i, variant_set in enumerate(filtered_variants):
+            card = self.create_variant_card(variant_set)
+            
+            # Arrange in responsive grid
+            row = i // columns
+            col = i % columns
+            card.grid(
+                row=row, 
+                column=col, 
+                sticky='nsew', 
+                padx=8, 
+                pady=8
+            )
+        
+        # Update stats
+        total_variants = sum(len(v['variants']) for v in filtered_variants)
+        
+        self.stats_vars["Word Variant Sets"].set(str(len(filtered_variants)))
+        
+        # Update scroll region
+        self.variants_canvas.configure(scrollregion=self.variants_canvas.bbox("all"))
+    
+    def calculate_variants_columns(self):
+        """Calculate optimal number of columns for word variants based on available width"""
+        if not hasattr(self, 'variants_canvas') or not self.variants_canvas.winfo_exists():
+            return 3
+        
+        canvas_width = self.variants_canvas.winfo_width()
+        if canvas_width <= 1:  # Canvas not yet rendered
+            return 3
+        
+        # Calculate how many cards fit with minimum width and padding
+        available_width = canvas_width - 40  # Account for container padding
+        card_total_width = self.min_card_width + self.card_padding
+        max_columns = max(1, available_width // card_total_width)
+        
+        return max_columns
+    
+    def refresh_variants_layout(self):
+        """Refresh just the variants layout without recreating cards"""
+        if not self.variants_container.winfo_children():
+            return
+            
+        columns = self.calculate_variants_columns()
+        
+        # Clear current grid
+        for widget in self.variants_container.grid_slaves():
+            widget.grid_forget()
+        
+        # Reconfigure grid columns
+        for i in range(columns):
+            self.variants_container.grid_columnconfigure(i, weight=1)
+        
+        # Rearrange existing cards
+        cards = self.variants_container.winfo_children()
+        for i, card in enumerate(cards):
+            row = i // columns
+            col = i % columns
+            card.grid(
+                row=row, 
+                column=col, 
+                sticky='nsew', 
+                padx=8, 
+                pady=8
+            )
+        
+        self.variants_canvas.configure(scrollregion=self.variants_canvas.bbox("all"))
+    
+    def refresh_variants(self):
+        """Refresh word variants display"""
+        self.display_filtered_variants(self.word_variants)
+    
+    def create_variant_card(self, variant_set):
+        """Create a rectangular word variant card widget"""
+        card = tk.Frame(
+            self.variants_container, 
+            bg='#252547', 
+            relief='raised', 
+            bd=1,
+            width=self.min_card_width,
+            height=self.min_card_height
+        )
+        card.pack_propagate(False)
+        
+        # Main content with padding
+        content = tk.Frame(card, bg='#252547')
+        content.pack(fill='both', expand=True, padx=12, pady=10)
+        content.grid_columnconfigure(0, weight=1)  # Base word column
+        content.grid_columnconfigure(1, weight=0)  # Buttons column
+        
+        # Header row - Base word (left) and buttons (top right)
+        header_frame = tk.Frame(content, bg='#252547')
+        header_frame.grid(row=0, column=0, columnspan=2, sticky='ew', pady=(0, 8))
+        header_frame.grid_columnconfigure(0, weight=1)
+        
+        # Base word (left aligned)
+        base_word = variant_set['base_word']
+        if len(base_word) > self.variant_name_limit:
+            base_word = base_word[:self.variant_name_limit - 3] + "..."
+        
+        name_label = tk.Label(
+            header_frame,
+            text=base_word,
+            font=('Arial', 12, 'bold'),
+            bg='#252547',
+            fg='white',
+            anchor='w'
+        )
+        name_label.grid(row=0, column=0, sticky='w')
+        
+        # Action buttons (top right)
+        button_frame = tk.Frame(header_frame, bg='#252547')
+        button_frame.grid(row=0, column=1, sticky='e')
+        
+        # Store variant reference for callbacks
+        variant_ref = variant_set
+        
+        edit_btn = tk.Button(
+            button_frame,
+            text="✏️",
+            command=lambda: self.edit_word_variants(self.word_variants.index(variant_ref)),
+            bg='#6c63ff',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=8,
+            pady=2,
+            width=3,
+            relief='flat'
+        )
+        edit_btn.pack(side=tk.LEFT, padx=(2, 0))
+        
+        delete_btn = tk.Button(
+            button_frame,
+            text="🗑️",
+            command=lambda: self.delete_word_variants(self.word_variants.index(variant_ref)),
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=8,
+            pady=2,
+            width=3,
+            relief='flat'
+        )
+        delete_btn.pack(side=tk.LEFT, padx=(2, 0))
+        
+        # Variants count row
+        count_frame = tk.Frame(content, bg='#252547')
+        count_frame.grid(row=1, column=0, columnspan=2, sticky='ew', pady=(0, 6))
+        
+        # Variants count
+        v_count = len(variant_set['variants'])
+        variants_text = f"🔤 {v_count} variant{'s' if v_count != 1 else ''}"
+        
+        variants_label = tk.Label(
+            count_frame,
+            text=variants_text,
+            font=('Arial', 9, 'bold'),
+            bg='#252547',
+            fg='#b0b0d0',
+            anchor='w'
+        )
+        variants_label.pack(side=tk.LEFT)
+        
+        # Preview row - show first few variants
+        preview_frame = tk.Frame(content, bg='#252547')
+        preview_frame.grid(row=2, column=0, columnspan=2, sticky='ew', pady=(0, 6))
+        
+        # Show first 3 variants as preview
+        preview_variants = variant_set['variants'][:3]
+        preview_text = ", ".join(preview_variants)
+        if len(variant_set['variants']) > 3:
+            preview_text += f" ... (+{len(variant_set['variants']) - 3} more)"
+        
+        preview_label = tk.Label(
+            preview_frame,
+            text=preview_text,
+            font=('Arial', 8),
+            bg='#252547',
+            fg='#d0d0f0',
+            anchor='w',
+            wraplength=250
+        )
+        preview_label.pack(side=tk.LEFT, fill='x')
+        
+        return card
+    
     def get_module_color(self, module):
         """Return color for module badge"""
         # Generate consistent color based on module name
@@ -1185,29 +1923,29 @@ class RoutingTrainerGUI:
         hash_val = sum(ord(c) for c in module)
         return colors[hash_val % len(colors)]
     
-    def new_group(self):
+    # Routing Groups Actions
+    def new_routing_group(self):
         """Create a new routing group"""
         def on_save(group_data):
             self.routing_groups.append(group_data)
             if self.save_routing_data():
-                self.refresh_groups()
+                self.refresh_routing_groups()
         
         RoutingGroupEditor(self.root, on_save=on_save)
     
-    def edit_group(self, index):
+    def edit_routing_group(self, index):
         """Edit an existing routing group"""
         def on_save(group_data):
             self.routing_groups[index] = group_data
             if self.save_routing_data():
-                self.refresh_groups()
+                self.refresh_routing_groups()
         
         RoutingGroupEditor(self.root, self.routing_groups[index], on_save)
     
-    def delete_group(self, index):
+    def delete_routing_group(self, index):
         """Delete a routing group"""
         group_name = self.routing_groups[index]['group_name']
         
-        # Use a less intrusive confirmation
         confirm = messagebox.askyesno(
             "Confirm Delete", 
             f"Delete routing group '{group_name}'?",
@@ -1217,7 +1955,41 @@ class RoutingTrainerGUI:
         if confirm:
             self.routing_groups.pop(index)
             if self.save_routing_data():
-                self.refresh_groups()
+                self.refresh_routing_groups()
+    
+    # Word Variants Actions
+    def new_word_variants(self):
+        """Create new word variants"""
+        def on_save(variant_data):
+            self.word_variants.append(variant_data)
+            if self.save_variants_data():
+                self.refresh_variants()
+        
+        WordVariantEditor(self.root, on_save=on_save)
+    
+    def edit_word_variants(self, index):
+        """Edit existing word variants"""
+        def on_save(variant_data):
+            self.word_variants[index] = variant_data
+            if self.save_variants_data():
+                self.refresh_variants()
+        
+        WordVariantEditor(self.root, self.word_variants[index], on_save)
+    
+    def delete_word_variants(self, index):
+        """Delete word variants"""
+        base_word = self.word_variants[index]['base_word']
+        
+        confirm = messagebox.askyesno(
+            "Confirm Delete", 
+            f"Delete word variants for '{base_word}'?",
+            parent=self.root
+        )
+        
+        if confirm:
+            self.word_variants.pop(index)
+            if self.save_variants_data():
+                self.refresh_variants()
 
 
 def main():

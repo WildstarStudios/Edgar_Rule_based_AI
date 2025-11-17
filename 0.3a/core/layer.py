@@ -42,6 +42,11 @@ class StreamingLayer:
         # Strict routing threshold - FIXED: Only use this, not JSON threshold
         self.ROUTING_THRESHOLD = 0.75  # Fixed threshold for all routing
         
+        # Word variants configuration
+        self.WORD_VARIANTS_CONFIG = {
+            'fuzzy_threshold': 80  # Fuzzy matching threshold for variants
+        }
+        
         # Streaming state
         self.is_streaming = False
         self.current_stream_text = ""
@@ -70,6 +75,11 @@ class StreamingLayer:
         self.routing_file = "resources/route.json"
         self.load_routing_config()
         
+        # Word variants configuration
+        self.word_variants = {}
+        self.variants_file = "resources/word_variants.json"
+        self.load_word_variants()
+        
         # API state for modules
         self.api_connections = {}
         
@@ -89,6 +99,7 @@ class StreamingLayer:
         print(f"   Letter streaming: {self.letter_streaming}")
         print(f"   Module limit: {self.module_limit}")
         print(f"   Message limit: {self.message_limit}")
+        print(f"   Loaded {len(self.word_variants)} word variant sets")
     
     def load_configuration(self) -> configparser.ConfigParser:
         """Load configuration from file"""
@@ -144,6 +155,34 @@ class StreamingLayer:
             print(f"❌ Error loading routing config: {e}")
             self.routing_config = {"routing_groups": [], "available_engines": [], "version": "1.0"}
     
+    def load_word_variants(self):
+        """Load word variants configuration from JSON file"""
+        try:
+            if os.path.exists(self.variants_file):
+                with open(self.variants_file, 'r', encoding='utf-8') as f:
+                    variants_config = json.load(f)
+                
+                # Convert list of variant sets to a dictionary for faster lookup
+                self.word_variants = {}
+                for variant_set in variants_config.get('word_variants', []):
+                    base_word = variant_set.get('base_word', '').lower().strip()
+                    variants = variant_set.get('variants', [])
+                    
+                    if base_word:
+                        # Store both base word and all variants
+                        self.word_variants[base_word] = {
+                            'base': base_word,
+                            'variants': [v.lower().strip() for v in variants] + [base_word]  # Include base word itself
+                        }
+                
+                print(f"✅ Loaded {len(self.word_variants)} word variant sets")
+            else:
+                self.word_variants = {}
+                print("⚠️  No word variants config found, using empty configuration")
+        except Exception as e:
+            print(f"❌ Error loading word variants: {e}")
+            self.word_variants = {}
+    
     def save_routing_config(self):
         """Save routing configuration to JSON file"""
         try:
@@ -155,15 +194,104 @@ class StreamingLayer:
             print(f"❌ Error saving routing config: {e}")
             return False
     
+    # ===== ENHANCED WORD VARIANTS SYSTEM WITH FUZZY MATCHING =====
+    
+    def _get_base_word_with_fuzzy(self, word: str, threshold: int = None) -> Optional[str]:
+        """Get base word using fuzzy matching on variants"""
+        if not self.word_variants:
+            return None
+        
+        if threshold is None:
+            threshold = self.WORD_VARIANTS_CONFIG['fuzzy_threshold']
+        
+        clean_word = word.lower().strip()
+        
+        # First try exact match
+        for base_word, variant_data in self.word_variants.items():
+            if clean_word in variant_data['variants']:
+                return base_word
+        
+        # Then try fuzzy match
+        for base_word, variant_data in self.word_variants.items():
+            for variant in variant_data['variants']:
+                similarity = fuzz.ratio(clean_word, variant)
+                if similarity >= threshold:
+                    print(f"🔍 Fuzzy variant match: '{clean_word}' ~ '{variant}' ({similarity}%) → '{base_word}'")
+                    return base_word
+        
+        return None
+    
+    def _expand_with_variants(self, text: str) -> str:
+        """
+        Expand text with word variants using fuzzy matching.
+        Replaces words with their base forms and adds variant forms.
+        """
+        if not self.word_variants:
+            return text
+        
+        words = text.lower().split()
+        expanded_words = []
+        
+        for word in words:
+            # Clean the word (remove punctuation)
+            clean_word = re.sub(r'[^\w\s]', '', word)
+            
+            # Get base word using fuzzy matching
+            base_word = self._get_base_word_with_fuzzy(clean_word)
+            
+            if base_word:
+                # Add both the base word and the original variant
+                expanded_words.append(base_word)
+                expanded_words.append(clean_word)
+            else:
+                # If not found as variant, just add the original word
+                expanded_words.append(clean_word)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_words = []
+        for word in expanded_words:
+            if word not in seen:
+                seen.add(word)
+                unique_words.append(word)
+        
+        return ' '.join(unique_words)
+    
+    def _normalize_with_variants(self, text: str) -> str:
+        """
+        Normalize text by replacing variants with their base words using fuzzy matching.
+        This helps with consistent matching.
+        """
+        if not self.word_variants:
+            return text.lower()
+        
+        words = text.lower().split()
+        normalized_words = []
+        
+        for word in words:
+            # Clean the word (remove punctuation)
+            clean_word = re.sub(r'[^\w\s]', '', word)
+            
+            # Get base word using fuzzy matching
+            base_word = self._get_base_word_with_fuzzy(clean_word)
+            
+            if base_word:
+                normalized_words.append(base_word)
+            else:
+                # If not found as variant, keep the original word
+                normalized_words.append(clean_word)
+        
+        return ' '.join(normalized_words)
+    
     def _calculate_fuzzy_containment_confidence(self, user_input: str, group_questions: list, 
                                               word_limit_enabled: bool, max_words: int, penalty_per_word: float) -> float:
         """
-        STRICT FUZZY MATCHING with minimum length requirements.
+        ENHANCED FUZZY MATCHING with word variants support and fuzzy variant matching.
         
-        Prevents accidental module activations by requiring:
-        1. Minimum input length (3 characters)
-        2. Input must be substantial portion of target phrase (50%)
-        3. High fuzzy similarity threshold (90%)
+        Uses word variants to improve matching accuracy by:
+        1. Expanding user input with variant forms using fuzzy matching
+        2. Normalizing both inputs to base word forms using fuzzy matching
+        3. Applying strict matching rules
         """
         user_input_lower = user_input.lower().strip()
         user_word_count = len(user_input_lower.split())
@@ -173,22 +301,31 @@ class StreamingLayer:
             print(f"🔍 Input too short for routing: '{user_input_lower}' (length: {len(user_input_lower)})")
             return 0.0
         
+        # ENHANCEMENT: Expand user input with word variants using fuzzy matching
+        expanded_user_input = self._expand_with_variants(user_input_lower)
+        print(f"🔍 Expanded user input with variants: '{user_input_lower}' -> '{expanded_user_input}'")
+        
         # Check for fuzzy containment in any of the group's questions
         for question in group_questions:
             question_lower = question.lower().strip()
             
+            # ENHANCEMENT: Expand question with word variants using fuzzy matching
+            expanded_question = self._expand_with_variants(question_lower)
+            
             # CRITICAL: Require user input to be substantial portion of target phrase
-            # Prevents "i" from matching "i need a recipie"
             min_required_length = len(question_lower) * 0.5  # At least 50% of target length
             if len(user_input_lower) < min_required_length:
                 print(f"🔍 Input too short for '{question}': '{user_input_lower}' ({len(user_input_lower)} < {min_required_length:.1f})")
                 continue
             
-            # Use token set ratio for better semantic matching
-            token_set_score = fuzz.token_set_ratio(question_lower, user_input_lower)
+            # ENHANCEMENT: Use both original and expanded versions for matching
+            original_token_set_score = fuzz.token_set_ratio(question_lower, user_input_lower)
+            expanded_token_set_score = fuzz.token_set_ratio(expanded_question, expanded_user_input)
+            
+            # Use the higher of the two scores
+            token_set_score = max(original_token_set_score, expanded_token_set_score)
             
             # CRITICAL: High threshold for fuzzy matching (90% similarity)
-            # Prevents partial matches from triggering modules
             if token_set_score >= 95:
                 # Perfect fuzzy match - starts with 1.0 confidence
                 base_confidence = 1.0
@@ -203,16 +340,15 @@ class StreamingLayer:
                 print(f"🔍 Matched '{question}' with confidence {base_confidence:.2f} (fuzzy score: {token_set_score})")
                 return base_confidence
             else:
-                print(f"🔍 Fuzzy score too low for '{question}': {token_set_score} < 90")
+                print(f"🔍 Fuzzy score too low for '{question}': {token_set_score} < 90 (original: {original_token_set_score}, expanded: {expanded_token_set_score})")
         
         # No fuzzy containment match found
         return 0.0
     
     def _find_best_route(self, user_input: str) -> tuple:
         """
-        Find the best matching routing group for user input using strict fuzzy matching.
+        Find the best matching routing group for user input using enhanced fuzzy matching with word variants.
         Returns (routing_group, confidence_score)
-        Uses strict length and similarity requirements to prevent false positives.
         """
         if not self.routing_config or not self.routing_config.get('routing_groups'):
             return None, 0.0
@@ -383,8 +519,8 @@ class StreamingLayer:
 
     def _is_input_relevant_to_module(self, module_name: str, user_input: str) -> bool:
         """
-        Check if user input is relevant to a module with strict matching.
-        Uses fuzzy matching to determine relevance.
+        ENHANCED: Check if user input is relevant to a module with strict matching.
+        Uses word variants with fuzzy matching to improve relevance detection.
         """
         try:
             module = __import__(f"core.modules.{module_name}", fromlist=[''])
@@ -392,17 +528,25 @@ class StreamingLayer:
             # Check if module defines expected patterns
             if hasattr(module, 'get_expected_patterns'):
                 patterns = module.get_expected_patterns()
-                input_lower = user_input.lower()
+                
+                # ENHANCEMENT: Use normalized input with fuzzy variants
+                input_normalized = self._normalize_with_variants(user_input.lower())
                 
                 # Check for exact matches first
                 for pattern in patterns:
-                    if pattern in input_lower:
+                    pattern_lower = pattern.lower()
+                    
+                    # Check original input
+                    if pattern_lower in input_normalized:
                         return True
                 
-                # Then check fuzzy matches
+                # Then check fuzzy matches with enhanced input
                 for pattern in patterns:
+                    pattern_lower = pattern.lower()
+                    
                     # Use token set ratio for better semantic matching
-                    similarity = fuzz.token_set_ratio(input_lower, pattern)
+                    similarity = fuzz.token_set_ratio(input_normalized, pattern_lower)
+                    
                     if similarity >= 70:  # 70% similarity threshold
                         print(f"🔍 Fuzzy match: '{user_input}' ~ '{pattern}' ({similarity}%)")
                         return True
@@ -633,7 +777,7 @@ class StreamingLayer:
     
     def process_message(self, user_input: str) -> list:
         """
-        Process user message through enhanced module system:
+        Process user message through enhanced module system with word variants:
         1. Try all active modules first (module_mode=True) - CASCADE through them
         2. If no active module handles it with 1.0 confidence, try routing system  
         3. If routing matches a module with module_mode=True, activate it
@@ -648,7 +792,7 @@ class StreamingLayer:
                 self._update_status("Active module handled request")
                 return module_response
             
-            # Step 2: Try routing system
+            # Step 2: Try routing system with word variants enhancement
             route_match, confidence = self._find_best_route(user_input)
             
             if route_match and route_match.get('engine') != "None" and confidence >= self.ROUTING_THRESHOLD:
@@ -746,6 +890,7 @@ class StreamingLayer:
         stats['active_modules'] = len(self.active_modules)
         stats['module_usage'] = self.module_usage_counts
         stats['module_message_counts'] = self.module_message_counts
+        stats['word_variants_count'] = len(self.word_variants)
         return stats
     
     def reset_conversation(self):
@@ -792,6 +937,7 @@ class StreamingLayer:
     def get_configuration(self) -> dict:
         """Get current configuration"""
         routing_stats = self.get_routing_stats()
+        variants_stats = self.get_word_variants_stats()
         
         return {
             'streaming_speed': self.streaming_speed,
@@ -807,7 +953,10 @@ class StreamingLayer:
             'available_modules': self.get_available_modules(),
             'routing_threshold': self.ROUTING_THRESHOLD,
             'module_limit': self.module_limit,
-            'message_limit': self.message_limit
+            'message_limit': self.message_limit,
+            'word_variants_count': variants_stats['total_sets'],
+            'word_variants_total': variants_stats['total_variants'],
+            'fuzzy_variants_threshold': self.WORD_VARIANTS_CONFIG['fuzzy_threshold']
         }
     
     def stop_streaming(self):
@@ -960,6 +1109,39 @@ class StreamingLayer:
         """Set the message limit for module deactivation"""
         self.message_limit = max(1, limit)  # At least 1 message
         print(f"✅ Message limit set to: {self.message_limit}")
+    
+    # ===== WORD VARIANTS METHODS =====
+    
+    def refresh_word_variants(self):
+        """Reload word variants from file"""
+        self.load_word_variants()
+    
+    def get_word_variants_stats(self) -> dict:
+        """Get word variants statistics"""
+        total_variants = sum(len(data['variants']) for data in self.word_variants.values())
+        
+        return {
+            'total_sets': len(self.word_variants),
+            'total_variants': total_variants,
+            'base_words': list(self.word_variants.keys())
+        }
+    
+    def test_word_variants_expansion(self, text: str) -> dict:
+        """
+        Test how word variants expand a given text.
+        Useful for debugging and testing variant matching.
+        """
+        expanded = self._expand_with_variants(text)
+        normalized = self._normalize_with_variants(text)
+        
+        return {
+            'original': text,
+            'expanded': expanded,
+            'normalized': normalized,
+            'words_processed': len(text.split()),
+            'words_expanded': len(expanded.split()),
+            'variants_applied': len(expanded.split()) - len(text.split())
+        }
 
 
 class StreamingAPI:

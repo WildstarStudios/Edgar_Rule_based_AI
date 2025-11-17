@@ -1,0 +1,14 @@
+{
+  "word_variants": [
+    {
+      "base_word": "hi",
+      "variants": [
+        "hey",
+        "hi",
+        "hello",
+	"howdey"
+      ]
+    }
+  ],
+  "version": "1.0"
+}

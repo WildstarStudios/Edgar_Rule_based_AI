@@ -29,6 +29,11 @@ class AdvancedChatbot:
         # Streaming is now handled by the layer - we don't need streaming callbacks here
         self.streaming_api = kwargs.get('streaming_api', None)
         
+        # Word variants system
+        self.word_variants = {}
+        self.variants_file = "resources/word_variants.json"
+        self.load_word_variants()
+        
         self.qa_groups = []
         
         # Enhanced configuration with same thresholds for all matching
@@ -44,6 +49,9 @@ class AdvancedChatbot:
                 'min_confidence': 90,
                 'apply_threshold': 92,
                 'semantic_check': True
+            },
+            'WORD_VARIANTS': {
+                'fuzzy_threshold': 80  # Fuzzy matching threshold for variants
             }
         }
         
@@ -58,7 +66,9 @@ class AdvancedChatbot:
             'tree_entries': 0,
             'tree_navigations': 0,
             'tree_exits': 0,
-            'confidence_rejections': 0
+            'confidence_rejections': 0,
+            'word_variants_applied': 0,
+            'fuzzy_variants_applied': 0
         }
         
         # Load available models and select one
@@ -136,6 +146,34 @@ class AdvancedChatbot:
         
         return config
     
+    def load_word_variants(self):
+        """Load word variants configuration from JSON file"""
+        try:
+            if os.path.exists(self.variants_file):
+                with open(self.variants_file, 'r', encoding='utf-8') as f:
+                    variants_config = json.load(f)
+                
+                # Convert list of variant sets to a dictionary for faster lookup
+                self.word_variants = {}
+                for variant_set in variants_config.get('word_variants', []):
+                    base_word = variant_set.get('base_word', '').lower().strip()
+                    variants = variant_set.get('variants', [])
+                    
+                    if base_word:
+                        # Store both base word and all variants
+                        self.word_variants[base_word] = {
+                            'base': base_word,
+                            'variants': [v.lower().strip() for v in variants] + [base_word]  # Include base word itself
+                        }
+                
+                print(f"✅ Loaded {len(self.word_variants)} word variant sets")
+            else:
+                self.word_variants = {}
+                print("⚠️  No word variants config found, using empty configuration")
+        except Exception as e:
+            print(f"❌ Error loading word variants: {e}")
+            self.word_variants = {}
+    
     def save_configuration(self):
         """Save current configuration to file"""
         self.config.set('ai_engine', 'auto_start_chat', str(self.auto_start_chat))
@@ -209,6 +247,98 @@ class AdvancedChatbot:
             print(f"❌ Error loading model: {e}")
             self.qa_groups = []
             return False
+    
+    # ===== ENHANCED WORD VARIANTS SYSTEM WITH FUZZY MATCHING =====
+    
+    def _get_base_word_with_fuzzy(self, word: str, threshold: int = None) -> Optional[str]:
+        """Get base word using fuzzy matching on variants"""
+        if not self.word_variants:
+            return None
+        
+        if threshold is None:
+            threshold = self.MATCHING_CONFIG['WORD_VARIANTS']['fuzzy_threshold']
+        
+        clean_word = word.lower().strip()
+        
+        # First try exact match
+        for base_word, variant_data in self.word_variants.items():
+            if clean_word in variant_data['variants']:
+                return base_word
+        
+        # Then try fuzzy match
+        for base_word, variant_data in self.word_variants.items():
+            for variant in variant_data['variants']:
+                similarity = fuzz.ratio(clean_word, variant)
+                if similarity >= threshold:
+                    print(f"🔍 Fuzzy variant match: '{clean_word}' ~ '{variant}' ({similarity}%) → '{base_word}'")
+                    self.performance_stats['fuzzy_variants_applied'] += 1
+                    return base_word
+        
+        return None
+    
+    def _expand_with_variants(self, text: str) -> str:
+        """
+        Expand text with word variants using fuzzy matching.
+        Replaces words with their base forms and adds variant forms.
+        """
+        if not self.word_variants:
+            return text
+        
+        words = text.lower().split()
+        expanded_words = []
+        
+        for word in words:
+            # Clean the word (remove punctuation)
+            clean_word = re.sub(r'[^\w\s]', '', word)
+            
+            # Get base word using fuzzy matching
+            base_word = self._get_base_word_with_fuzzy(clean_word)
+            
+            if base_word:
+                # Add both the base word and the original variant
+                expanded_words.append(base_word)
+                expanded_words.append(clean_word)
+                self.performance_stats['word_variants_applied'] += 1
+            else:
+                # If not found as variant, just add the original word
+                expanded_words.append(clean_word)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_words = []
+        for word in expanded_words:
+            if word not in seen:
+                seen.add(word)
+                unique_words.append(word)
+        
+        return ' '.join(unique_words)
+    
+    def _normalize_with_variants(self, text: str) -> str:
+        """
+        Normalize text by replacing variants with their base words using fuzzy matching.
+        This helps with consistent matching.
+        """
+        if not self.word_variants:
+            return text.lower()
+        
+        words = text.lower().split()
+        normalized_words = []
+        
+        for word in words:
+            # Clean the word (remove punctuation)
+            clean_word = re.sub(r'[^\w\s]', '', word)
+            
+            # Get base word using fuzzy matching
+            base_word = self._get_base_word_with_fuzzy(clean_word)
+            
+            if base_word:
+                normalized_words.append(base_word)
+                self.performance_stats['word_variants_applied'] += 1
+            else:
+                # If not found as variant, keep the original word
+                normalized_words.append(clean_word)
+        
+        return ' '.join(normalized_words)
     
     # ===== ENHANCED TREE NAVIGATION SYSTEM =====
     
@@ -294,7 +424,8 @@ class AdvancedChatbot:
         if not self.conversation_context['available_branches']:
             return None
         
-        user_lower = user_input.lower().strip()
+        # ENHANCEMENT: Use normalized user input with word variants
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
         best_match = None
         best_score = 0.0
         
@@ -303,8 +434,11 @@ class AdvancedChatbot:
             if not branch_question:
                 continue
             
+            # ENHANCEMENT: Use normalized branch question with word variants
+            branch_normalized = self._normalize_with_variants(branch_question)
+            
             # Use same matching as normal chat (not stricter)
-            similarity = fuzz.token_set_ratio(user_lower, branch_question) / 100.0
+            similarity = fuzz.token_set_ratio(user_normalized, branch_normalized) / 100.0
             
             if similarity > best_score and similarity >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
                 best_score = similarity
@@ -317,7 +451,8 @@ class AdvancedChatbot:
     
     def handle_tree_navigation_commands(self, user_input: str) -> Optional[str]:
         """Handle natural language tree navigation commands"""
-        user_lower = user_input.lower().strip()
+        # ENHANCEMENT: Use normalized input for command matching
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
         
         # Back navigation patterns
         back_patterns = [
@@ -332,7 +467,7 @@ class AdvancedChatbot:
         ]
         
         for pattern in back_patterns:
-            if re.search(pattern, user_lower):
+            if re.search(pattern, user_normalized):
                 if self.navigate_back():
                     current_pos = self.get_current_tree_position()
                     return f"Okay, going back to {current_pos}."
@@ -350,7 +485,7 @@ class AdvancedChatbot:
         ]
         
         for pattern in options_patterns:
-            if re.search(pattern, user_lower):
+            if re.search(pattern, user_normalized):
                 return self.get_available_branches_text()
         
         return None
@@ -372,7 +507,8 @@ class AdvancedChatbot:
         if not self.is_in_tree():
             return False
         
-        user_lower = user_input.lower().strip()
+        # ENHANCEMENT: Use normalized input for exit pattern matching
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
         
         # Explicit exit patterns
         exit_patterns = [
@@ -385,7 +521,7 @@ class AdvancedChatbot:
         ]
         
         for pattern in exit_patterns:
-            if re.search(pattern, user_lower):
+            if re.search(pattern, user_normalized):
                 return True
         
         # Exit if no match in tree and user seems to be changing topic
@@ -399,12 +535,15 @@ class AdvancedChatbot:
     
     def is_different_topic(self, user_input: str) -> bool:
         """Check if user input seems to be about a completely different topic"""
-        user_lower = user_input.lower()
+        # ENHANCEMENT: Use normalized input for topic matching
+        user_normalized = self._normalize_with_variants(user_input.lower())
         
         # If it matches any root group strongly, it's probably a new topic
         for group in self.qa_groups:
             for question in group.get('questions', []):
-                similarity = fuzz.token_set_ratio(user_lower, question.lower()) / 100.0
+                # ENHANCEMENT: Use normalized question for matching
+                question_normalized = self._normalize_with_variants(question.lower())
+                similarity = fuzz.token_set_ratio(user_normalized, question_normalized) / 100.0
                 if similarity > 0.7:  # Strong match to a different root
                     return True
         
@@ -440,11 +579,12 @@ class AdvancedChatbot:
         print(f"🎯 Answer confidence requirement {status}")
         self.save_configuration()
     
-    # ===== ENHANCED MATCHING SYSTEM =====
+    # ===== ENHANCED MATCHING SYSTEM WITH WORD VARIANTS =====
     
     def find_best_match(self, user_question: str) -> Optional[Tuple[dict, float, str]]:
-        """Find best match with tree awareness"""
-        user_question_lower = user_question.lower().strip()
+        """Find best match with tree awareness and word variants support"""
+        # ENHANCEMENT: Use normalized user input with word variants
+        user_normalized = self._normalize_with_variants(user_question.lower().strip())
         
         # Normal matching - REMOVED OLD "TELL ME MORE" SYSTEM
         best_match = None
@@ -453,7 +593,9 @@ class AdvancedChatbot:
         
         for group in self.qa_groups:
             for question in group.get('questions', []):
-                base_score = self.calculate_semantic_similarity(user_question, question)
+                # ENHANCEMENT: Use normalized question with word variants
+                question_normalized = self._normalize_with_variants(question.lower())
+                base_score = self.calculate_semantic_similarity(user_normalized, question_normalized)
                 
                 if base_score > best_score and base_score >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
                     best_score = base_score
@@ -484,34 +626,38 @@ class AdvancedChatbot:
     
     def calculate_semantic_similarity(self, user_question: str, db_question: str) -> float:
         """Calculate semantic similarity between user question and database question"""
-        user_lower = user_question.lower()
-        db_lower = db_question.lower()
-        
-        similarity = fuzz.token_set_ratio(user_lower, db_lower) / 100.0
+        # Note: Inputs are expected to be pre-normalized with word variants
+        similarity = fuzz.token_set_ratio(user_question, db_question) / 100.0
         return min(similarity, 1.0)
     
     def auto_correct_input(self, user_input: str) -> Tuple[str, List[Tuple[str, int]]]:
-        """Auto-correct input"""
-        user_lower = user_input.lower().strip()
+        """Auto-correct input with word variants support"""
+        # ENHANCEMENT: Use normalized user input with word variants
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
         
-        if len(user_lower) <= 3:
+        if len(user_normalized) <= 3:
             return user_input, []
         
         all_questions = []
         for group in self.qa_groups:
             all_questions.extend(group.get('questions', []))
         
-        if any(q.lower() == user_lower for q in all_questions):
+        # ENHANCEMENT: Check against normalized questions too
+        all_questions_normalized = [self._normalize_with_variants(q.lower()) for q in all_questions]
+        
+        if any(q.lower() == user_normalized for q in all_questions_normalized):
             return user_input, []
         
-        matches = process.extract(user_input, all_questions, 
+        matches = process.extract(user_normalized, all_questions_normalized, 
                                 scorer=fuzz.partial_ratio, limit=5)
         
         good_matches = []
         for match, score in matches:
             if score >= self.MATCHING_CONFIG['AUTO_CORRECTION']['min_confidence']:
-                if self.validate_semantic_match(user_input, match):
-                    good_matches.append((match, score))
+                # Map back to original question for correction
+                original_question = all_questions[all_questions_normalized.index(match)]
+                if self.validate_semantic_match(user_normalized, match):
+                    good_matches.append((original_question, score))
         
         if good_matches and good_matches[0][1] >= self.MATCHING_CONFIG['AUTO_CORRECTION']['apply_threshold']:
             return good_matches[0][0], good_matches
@@ -520,6 +666,7 @@ class AdvancedChatbot:
     
     def validate_semantic_match(self, user_question: str, matched_question: str) -> bool:
         """Validate semantic match"""
+        # Note: Inputs are expected to be pre-normalized with word variants
         user_words = set(user_question.lower().split())
         matched_words = set(matched_question.lower().split())
         common_words = {'what', 'is', 'are', 'how', 'why', 'when', 'where', 'who', 'tell', 'me', 'about'}
@@ -531,7 +678,7 @@ class AdvancedChatbot:
     # ===== OPTIMIZED QUESTION PROCESSING =====
     
     def process_multiple_questions(self, user_input: str) -> List[Tuple]:
-        """Process input with tree navigation support"""
+        """Process input with tree navigation and word variants support"""
         questions = self.split_questions(user_input)
         responses = []
         
@@ -732,8 +879,11 @@ class AdvancedChatbot:
         print(f"   Tree navigations: {self.performance_stats['tree_navigations']}")
         print(f"   Tree exits: {self.performance_stats['tree_exits']}")
         print(f"   Confidence rejections: {self.performance_stats['confidence_rejections']}")
+        print(f"   Word variants applied: {self.performance_stats['word_variants_applied']}")
+        print(f"   Fuzzy variants applied: {self.performance_stats['fuzzy_variants_applied']}")
         print(f"   Groups in model: {len(self.qa_groups)}")
         print(f"   Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
+        print(f"   Word variant sets: {len(self.word_variants)}")
     
     # ===== CHAT INTERFACE =====
     
@@ -748,6 +898,7 @@ class AdvancedChatbot:
         print("Type 'confidence <value>' to set minimum confidence requirement (0.0-1.0, 0.0 = disabled)")
         print(f"✨ Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
         print("✨ NEW: Natural tree navigation - say 'go back', 'what are my options', etc.")
+        print(f"✨ NEW: Word variants system - {len(self.word_variants)} variant sets loaded")
         print("-" * 60)
         
         while True:

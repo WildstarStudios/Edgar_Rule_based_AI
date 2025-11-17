@@ -1,5 +1,5 @@
 @echo off
-set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a2\.venv\Scripts\pyinstaller.exe
+set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a\.venv\Scripts\pyinstaller.exe
 set PACKAGE_DIR=dist\package
 
 REM ============================================================
