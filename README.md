@@ -57,7 +57,7 @@
 
 
 # Modules
-* Web Search ❌
+* Web Search ✅
 * Weather Search ✅
 * Time Search ✅
 * Joke Engine ✅
