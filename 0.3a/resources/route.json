@@ -7,7 +7,8 @@
       "max_words": 7,
       "penalty_per_word": 0.25,
       "questions": [
-        "what is the time"
+        "what is the time",
+        "what time is it"
       ]
     },
     {
@@ -54,10 +55,10 @@
   ],
   "available_engines": [
     "weather",
-    "joke",
     "recipie",
+    "search",
     "time",
-    "search"
+    "joke"
   ],
   "version": "1.0"
 }
