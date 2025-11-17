@@ -36,8 +36,9 @@
 
     # 0.3a - Modularization and Accuracy Improvements
     * module system ✅
-    * Word Variant System ❌
+    * Word Variant System ✅
     * Group Sections Upgrade ❌
+    * Multi Follow Up tree variation ❌
     * make WebUi ❌
     * Make login page ❌
 
@@ -50,14 +51,14 @@
 * Multi Q\&A system ✅
 * Multi Follow Up tree variation ❌
 * Group Sections Upgrade ❌
-* Word Variant System ❌
+* Word Variant System ✅
 * module system ❌
 * make WebUi ❌
 * Make login page ❌
 
 
 # Modules
-* Web Search ❌
+* Web Search ✅
 * Weather Search ✅
 * Time Search ✅
 * Joke Engine ✅
