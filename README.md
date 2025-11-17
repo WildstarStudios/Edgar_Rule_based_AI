@@ -42,6 +42,11 @@
     * make WebUi ❌
     * Make login page ❌
 
+    # 0.4a - 
+    * Topic Context System
+    * Search format instead of load.
+    * terminal based trainer
+
 
 
 # To-Do
@@ -82,6 +87,8 @@
 * Custom Binary format
 * .rbm (rule based model)
 * .rbmd (rule based model data)
+* terminal based trainer
+* terminal based route setup
 
 
 # Deploy
