@@ -47,7 +47,7 @@
     * Search format instead of load.
     * terminal based trainers
 	* chat mini window
-	* user train edgar
+	* subroutines
 
 
 
