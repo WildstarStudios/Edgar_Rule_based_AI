@@ -24,9 +24,9 @@
             height: 100vh;
         }
 
-        /* Sidebar */
+        /* Sidebar - Simplified for current chat only */
         .sidebar {
-            width: 260px;
+            width: 300px;
             background-color: {{ colors.bg_secondary }};
             border-right: 1px solid {{ colors.border }};
             display: flex;
@@ -51,9 +51,17 @@
             box-shadow: 0 5px 15px {{ colors.accent_primary }}30;
         }
 
-        .chat-history {
+        .current-chat-section {
             flex: 1;
             overflow-y: auto;
+        }
+
+        .section-title {
+            color: {{ colors.text_secondary }};
+            font-size: 0.9em;
+            margin-bottom: 10px;
+            padding: 5px 0;
+            border-bottom: 1px solid {{ colors.border }};
         }
 
         .chat-history-item {
@@ -63,11 +71,35 @@
             cursor: pointer;
             transition: all 0.3s ease;
             color: {{ colors.text_secondary }};
+            border: 1px solid transparent;
         }
 
         .chat-history-item:hover {
             background-color: {{ colors.bg_tertiary }};
             color: {{ colors.text_primary }};
+        }
+
+        .chat-history-item.active {
+            background-color: {{ colors.bg_tertiary }};
+            color: {{ colors.text_primary }};
+            border-color: {{ colors.accent_primary }};
+        }
+
+        .system-info {
+            background: {{ colors.bg_tertiary }};
+            padding: 10px;
+            border-radius: 8px;
+            margin: 10px 0;
+            font-size: 0.8em;
+        }
+
+        .system-info .label {
+            color: {{ colors.text_secondary }};
+            font-weight: bold;
+        }
+
+        .system-info .value {
+            color: {{ colors.accent_success }};
         }
 
         .user-section {
@@ -285,7 +317,7 @@
             color: {{ colors.text_secondary }};
         }
 
-        /* Clean Input Container - No Panel */
+        /* Clean Input Container */
         .input-container {
             padding: 20px;
             background-color: {{ colors.bg_primary }};
@@ -309,7 +341,7 @@
             resize: none;
             line-height: 1.4;
             min-height: 24px;
-            max-height: 168px; /* 8 lines * 21px line height */
+            max-height: 168px;
             overflow-y: auto;
             font-family: inherit;
             padding: 12px 16px;
@@ -408,7 +440,7 @@
             margin: 0 auto;
         }
 
-        /* Scrollbar styling for textarea */
+        /* Scrollbar styling */
         .chat-input::-webkit-scrollbar {
             width: 6px;
         }
@@ -425,6 +457,27 @@
 
         .chat-input::-webkit-scrollbar-thumb:hover {
             background: {{ colors.accent_primary }};
+        }
+
+        /* Context info */
+        .context-info {
+            background: {{ colors.bg_tertiary }};
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 5px 0;
+            font-size: 0.8em;
+            color: {{ colors.text_secondary }};
+            border-left: 3px solid {{ colors.accent_primary }};
+        }
+
+        .module-info {
+            background: {{ colors.bg_tertiary }};
+            padding: 8px 12px;
+            border-radius: 8px;
+            margin: 5px 0;
+            font-size: 0.8em;
+            color: {{ colors.accent_success }};
+            border-left: 3px solid {{ colors.accent_success }};
         }
 
         @media (max-width: 768px) {
@@ -461,17 +514,41 @@
 </head>
 <body>
     <div class="chat-container">
-        <!-- Sidebar -->
+        <!-- Sidebar - Current Chat Only -->
         <div class="sidebar">
             <button class="new-chat-btn" onclick="newChat()">
                 <span class="text">+ New Chat</span>
             </button>
             
-            <div class="chat-history">
-                <!-- Chat history would go here -->
-                <div class="chat-history-item">Today</div>
-                <div class="chat-history-item">Yesterday</div>
-                <div class="chat-history-item">Previous 7 Days</div>
+            <div class="current-chat-section">
+                <div class="section-title">CURRENT CHAT</div>
+                <div class="chat-history-item active" onclick="loadChat('current')">
+                    Current Session
+                </div>
+                
+                <!-- System Information -->
+                <div class="system-info">
+                    <div><span class="label">Model:</span> <span class="value">{{ chat_status.current_model }}</span></div>
+                    <div><span class="label">QA Groups:</span> <span class="value">{{ chat_status.qa_groups_count }}</span></div>
+                    <div><span class="label">Active Modules:</span> <span class="value">{{ chat_status.active_modules_count }}</span></div>
+                </div>
+                
+                <div class="section-title" style="margin-top: 20px;">QUICK ACTIONS</div>
+                <div class="chat-history-item" onclick="quickAction('tell me more')">
+                    Tell me more
+                </div>
+                <div class="chat-history-item" onclick="quickAction('about Python programming')">
+                    About Python
+                </div>
+                <div class="chat-history-item" onclick="quickAction('what is AI?')">
+                    What is AI?
+                </div>
+                <div class="chat-history-item" onclick="quickAction('help')">
+                    Help
+                </div>
+                <div class="chat-history-item" onclick="showSystemInfo()">
+                    System Info
+                </div>
             </div>
             
             <div class="user-section">
@@ -491,17 +568,24 @@
         <div class="main-chat">
             <div class="chat-header">
                 <h1>Edgar AI Assistant</h1>
-                <div class="subtitle">Rule-Based AI System</div>
+                <div class="subtitle">Rule-Based AI System with Module Integration</div>
             </div>
 
             <div class="messages-container" id="messagesContainer">
                 <!-- Welcome message - only shown when no messages -->
                 <div class="welcome-message" id="welcomeMessage">
-                    <h2>Welcome to Edgar AI! 👋</h2>
+                    <h2>Welcome to Edgar AI! 🤖</h2>
                     <p>
-                        I'm your rule-based AI assistant. While I'm still under development, you can send me messages 
-                        and I'll respond with a work-in-progress message. The full chat functionality is coming soon!
+                        I'm your rule-based AI assistant with advanced module integration. 
+                        I can communicate with specialized modules and provide intelligent responses
+                        using pattern matching, conversation trees, and fuzzy logic.
                     </p>
+                    
+                    <div class="system-info" style="margin: 20px 0;">
+                        <div><span class="label">Current Model:</span> <span class="value">{{ chat_status.current_model }}</span></div>
+                        <div><span class="label">Knowledge Base:</span> <span class="value">{{ chat_status.qa_groups_count }} QA groups</span></div>
+                        <div><span class="label">Available Modules:</span> <span class="value">{{ chat_status.available_modules|length }}</span></div>
+                    </div>
                     
                     <div class="feature-grid">
                         <div class="feature-item">
@@ -531,7 +615,7 @@
                     <textarea 
                         class="chat-input" 
                         id="chatInput"
-                        placeholder="Message Edgar AI..." 
+                        placeholder="Message Edgar AI... (I can route to modules and use the AI engine)" 
                         rows="1"
                     ></textarea>
                     <button class="send-button" id="sendButton" onclick="sendMessage()">
@@ -579,15 +663,11 @@
 
         // Adjust textarea height based on content
         function adjustTextareaHeight() {
-            // Reset height to auto to get the correct scrollHeight
             chatInput.style.height = 'auto';
-            
-            // Calculate the desired height (min 24px, max for 8 lines)
-            const lineHeight = 21; // Approximate line height in pixels
+            const lineHeight = 21;
             const maxHeight = lineHeight * MAX_LINES;
             const scrollHeight = chatInput.scrollHeight;
             
-            // Set height, but don't exceed max height
             if (scrollHeight <= maxHeight) {
                 chatInput.style.height = scrollHeight + 'px';
                 chatInput.style.overflowY = 'hidden';
@@ -601,7 +681,6 @@
             const count = chatInput.value.length;
             charCount.textContent = `${count}/${MAX_CHARS}`;
             
-            // Update color based on character count
             charCount.className = 'char-count';
             if (count > MAX_CHARS * 0.9) {
                 charCount.classList.add('error');
@@ -637,11 +716,59 @@
             // Show typing indicator
             showTypingIndicator();
             
-            // Simulate AI processing (in a real app, this would be an API call)
-            setTimeout(() => {
+            // Send message to backend for processing via streaming layer
+            processMessageWithBackend(message);
+        }
+
+        async function processMessageWithBackend(message) {
+            try {
+                const response = await fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const data = await response.json();
+                
+                // Remove typing indicator
                 removeTypingIndicator();
-                addBotResponse(message);
-            }, 1000 + Math.random() * 1000); // Random delay between 1-2 seconds
+                
+                // Display the response
+                if (data.success && data.response) {
+                    displayBotResponse(data.response, data.context, data.module_info);
+                } else {
+                    displayBotResponse("I'm sorry, I couldn't process your message. Please try again.", null, null);
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                removeTypingIndicator();
+                displayBotResponse("I'm having trouble connecting to the AI system. Please try again later.", null, null);
+            }
+        }
+
+        function displayBotResponse(response, context, moduleInfo) {
+            isProcessing = false;
+            updateSendButtonState();
+            
+            // Add context info if available
+            if (context && context !== "Minimal context") {
+                addContextInfo(context);
+            }
+            
+            // Add module info if available
+            if (moduleInfo) {
+                addModuleInfo(moduleInfo);
+            }
+            
+            // Display the main response
+            addMessage('bot', response);
         }
 
         function addMessage(sender, content) {
@@ -664,6 +791,22 @@
             
             // Store message
             messages.push({ sender, content, timestamp: new Date() });
+        }
+
+        function addContextInfo(context) {
+            const contextDiv = document.createElement('div');
+            contextDiv.className = 'context-info';
+            contextDiv.textContent = `🧠 ${context}`;
+            messagesContainer.appendChild(contextDiv);
+            scrollToBottom();
+        }
+
+        function addModuleInfo(moduleInfo) {
+            const moduleDiv = document.createElement('div');
+            moduleDiv.className = 'module-info';
+            moduleDiv.textContent = `🔄 ${moduleInfo}`;
+            messagesContainer.appendChild(moduleDiv);
+            scrollToBottom();
         }
 
         function showTypingIndicator() {
@@ -701,23 +844,6 @@
             }
         }
 
-        function addBotResponse(userMessage) {
-            isProcessing = false;
-            updateSendButtonState();
-            
-            // Generate a work-in-progress response
-            const responses = [
-                "Thanks for your message! I'm currently under development as a rule-based AI system. The full chat functionality with pattern matching and conversation trees is coming soon!",
-                "I received your message: \"" + userMessage + "\". This is a work-in-progress demo - the actual Edgar AI system will use advanced pattern matching to provide accurate responses.",
-                "Hello! I'm Edgar AI, still in development. When complete, I'll use rule-based logic with word variants and conversation trees to help answer your questions reliably.",
-                "Great question! The full version of Edgar AI will analyze your message using fuzzy matching and route it to the appropriate knowledge module. For now, this is a demo interface.",
-                "I'm processing your message in this development preview. The final system will provide consistent, predictable answers without the hallucinations of generative AI models."
-            ];
-            
-            const randomResponse = responses[Math.floor(Math.random() * responses.length)];
-            addMessage('bot', randomResponse);
-        }
-
         function scrollToBottom() {
             messagesContainer.scrollTop = messagesContainer.scrollHeight;
         }
@@ -740,6 +866,81 @@
                 chatInput.style.height = 'auto';
                 updateCharCount();
                 updateSendButtonState();
+                
+                // Reset chat on backend
+                fetch('/api/reset_chat', { method: 'POST' })
+                    .then(response => response.json())
+                    .then(data => {
+                        if (data.success) {
+                            console.log('Chat reset successfully');
+                        }
+                    })
+                    .catch(error => console.error('Error resetting chat:', error));
+            }
+        }
+
+        function quickAction(action) {
+            if (action === 'help') {
+                showHelp();
+            } else if (action === 'showSystemInfo') {
+                showSystemInfo();
+            } else {
+                chatInput.value = action;
+                sendMessage();
+            }
+        }
+
+        async function showSystemInfo() {
+            try {
+                const response = await fetch('/api/chat_status');
+                const data = await response.json();
+                
+                if (data.success) {
+                    let infoText = `🤖 System Information\n\n`;
+                    infoText += `Current Model: ${data.current_model}\n`;
+                    infoText += `QA Groups: ${data.qa_groups_count}\n`;
+                    infoText += `Active Modules: ${data.active_modules.join(', ') || 'None'}\n`;
+                    infoText += `Available Modules: ${data.available_modules.length}\n\n`;
+                    infoText += `Statistics:\n`;
+                    infoText += `- Total Questions: ${data.statistics.total_questions || 0}\n`;
+                    infoText += `- Successful Matches: ${data.statistics.successful_matches || 0}\n`;
+                    infoText += `- Tree Entries: ${data.statistics.tree_entries || 0}\n`;
+                    
+                    addMessage('bot', infoText);
+                }
+            } catch (error) {
+                console.error('Error getting system info:', error);
+                addMessage('bot', 'Unable to retrieve system information.');
+            }
+        }
+
+        function showHelp() {
+            const helpText = `🤖 Edgar AI Assistant Help
+
+Available Commands:
+• "tell me more" - Get detailed explanations
+• Ask about programming, AI, or any topic
+• The system automatically routes to appropriate modules
+• Use natural language - I understand context
+
+Features:
+• Rule-based AI with pattern matching
+• Module integration for specialized tasks
+• Conversation trees for follow-up questions
+• Fuzzy matching for better understanding
+
+Tip: Just chat naturally and I'll route your questions to the right place!`;
+
+            if (welcomeMessage.style.display === 'none') {
+                addMessage('bot', helpText);
+            } else {
+                welcomeMessage.innerHTML = `
+                    <h2>Edgar AI Help 🤖</h2>
+                    <div style="text-align: left; margin-top: 20px;">
+                        ${helpText.split('\n').map(line => `<p style="margin: 10px 0;">${line}</p>`).join('')}
+                    </div>
+                    <button onclick="location.reload()" style="margin-top: 20px; padding: 10px 20px; background: {{ colors.accent_primary }}; color: white; border: none; border-radius: 5px; cursor: pointer;">Start Chatting</button>
+                `;
             }
         }
 
@@ -747,6 +948,14 @@
             if (confirm('Are you sure you want to log out?')) {
                 window.location.href = '/logout';
             }
+        }
+
+        function loadChat(chatId) {
+            // For now, just highlight the current chat
+            document.querySelectorAll('.chat-history-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            event.target.classList.add('active');
         }
 
         // Initialize

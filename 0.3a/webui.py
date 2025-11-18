@@ -5,6 +5,8 @@ import hashlib
 import secrets
 from datetime import datetime, timedelta
 import re
+import json
+from core.layer import create_streaming_layer
 
 app = Flask(__name__, 
             static_folder='webui/static',
@@ -31,6 +33,9 @@ COLORS = {
     'hover_primary': '#5750d3',
     'hover_secondary': '#35356a'
 }
+
+# Initialize streaming layer
+streaming_layer = None
 
 def init_db():
     """Initialize the SQLite database"""
@@ -73,6 +78,22 @@ def init_db():
     
     conn.commit()
     conn.close()
+
+def init_streaming_layer():
+    """Initialize the streaming layer for the web interface"""
+    global streaming_layer
+    try:
+        streaming_layer = create_streaming_layer(
+            config_file="config.cfg",
+            streaming_callback=None,  # We'll handle streaming differently for web
+            thinking_callback=None,
+            response_complete_callback=None,
+            status_update_callback=None,
+            error_callback=None
+        )
+        print("✅ Streaming layer initialized for web interface")
+    except Exception as e:
+        print(f"❌ Error initializing streaming layer: {e}")
 
 def hash_password(password):
     """Hash a password for storing"""
@@ -228,7 +249,23 @@ def chat():
         return redirect(url_for('index'))
     
     user_info = get_user_info(session['user_id'])
-    return render_template('chat/chat.html', colors=COLORS, user=user_info)
+    
+    # Get streaming layer status
+    chat_status = {}
+    if streaming_layer:
+        try:
+            config = streaming_layer.get_configuration()
+            chat_status = {
+                'current_model': config['current_model'],
+                'qa_groups_count': config['qa_groups_count'],
+                'active_modules_count': config['active_modules_count'],
+                'available_modules': config['available_modules'][:5]  # First 5 modules
+            }
+        except Exception as e:
+            print(f"Error getting chat status: {e}")
+            chat_status = {'current_model': 'Unknown', 'qa_groups_count': 0}
+    
+    return render_template('chat/chat.html', colors=COLORS, user=user_info, chat_status=chat_status)
 
 @app.route('/logout')
 def logout():
@@ -236,13 +273,192 @@ def logout():
     # Delete remember me token if exists
     remember_token = request.cookies.get('remember_token')
     if remember_token:
-        delete_remember_remember_token(remember_token)
+        delete_remember_me_token(remember_token)
     
     session.clear()
     response = redirect(url_for('index'))
     response.set_cookie('remember_token', '', expires=0)
     return response
 
+# API Routes for Chat Functionality
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    """API endpoint for chat messages that uses the streaming layer"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    data = request.get_json()
+    user_message = data.get('message', '').strip()
+    
+    if not user_message:
+        return jsonify({'success': False, 'error': 'Empty message'})
+    
+    try:
+        if not streaming_layer:
+            return jsonify({
+                'success': True,
+                'response': "I'm currently initializing. Please try again in a moment.",
+                'context': 'System Initializing',
+                'module_info': None
+            })
+        
+        # Process the message through the streaming layer
+        responses = streaming_layer.process_message(user_message)
+        
+        # Get context summary
+        context = streaming_layer.get_context_summary()
+        
+        # Handle responses
+        if responses:
+            # Use the first response
+            response_data = responses[0]
+            
+            # Handle different response formats
+            if len(response_data) == 6:
+                # AI Engine format: (original_question, answer, confidence, corrections, matched_group, match_type)
+                original_question, answer, confidence, corrections, matched_group, match_type = response_data
+                response_text = answer
+                
+                # Create module info
+                if matched_group:
+                    module_info = f"AI Engine: {matched_group} ({match_type}, confidence: {confidence:.2f})"
+                else:
+                    module_info = f"AI Engine ({match_type}, confidence: {confidence:.2f})"
+                    
+            elif len(response_data) == 3:
+                # Module routing format: (answer, confidence, source)
+                answer, confidence, source = response_data
+                response_text = answer
+                module_info = source
+                
+            else:
+                # Unknown format
+                response_text = str(response_data[0]) if response_data else "I received your message."
+                module_info = "Unknown response format"
+                
+        else:
+            # No responses - use fallback
+            response_text = "I'm not sure how to respond to that. Could you try rephrasing your question?"
+            module_info = "No matching response found"
+        
+        return jsonify({
+            'success': True,
+            'response': response_text,
+            'context': context,
+            'module_info': module_info
+        })
+        
+    except Exception as e:
+        print(f"Error processing chat message: {e}")
+        return jsonify({
+            'success': False,
+            'error': 'Internal server error',
+            'response': "I'm experiencing technical difficulties. Please try again later."
+        })
+
+@app.route('/api/reset_chat', methods=['POST'])
+def api_reset_chat():
+    """API endpoint to reset the chat conversation"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        if streaming_layer:
+            streaming_layer.reset_conversation()
+            return jsonify({'success': True, 'message': 'Chat conversation reset'})
+        else:
+            return jsonify({'success': False, 'error': 'Streaming layer not initialized'})
+    except Exception as e:
+        print(f"Error resetting chat: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'})
+
+@app.route('/api/chat_status')
+def api_chat_status():
+    """API endpoint to get chat status and statistics"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        if streaming_layer:
+            config = streaming_layer.get_configuration()
+            stats = streaming_layer.get_statistics()
+            
+            return jsonify({
+                'success': True,
+                'current_model': config['current_model'],
+                'qa_groups_count': config['qa_groups_count'],
+                'active_modules': streaming_layer.get_active_modules(),
+                'available_modules': config['available_modules'],
+                'statistics': stats,
+                'configuration': {
+                    'streaming_speed': config['streaming_speed'],
+                    'letter_streaming': config['letter_streaming'],
+                    'confidence_requirement': config['confidence_requirement'],
+                    'routing_threshold': config['routing_threshold']
+                }
+            })
+        else:
+            return jsonify({
+                'success': True,
+                'current_model': 'Unknown',
+                'active_modules': [],
+                'statistics': {},
+                'configuration': {}
+            })
+    except Exception as e:
+        print(f"Error getting chat status: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'})
+
+@app.route('/api/change_model', methods=['POST'])
+def api_change_model():
+    """API endpoint to change the current model"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    data = request.get_json()
+    model_name = data.get('model_name', '').strip()
+    
+    if not model_name:
+        return jsonify({'success': False, 'error': 'No model name provided'})
+    
+    try:
+        if streaming_layer:
+            success = streaming_layer.change_model(model_name)
+            if success:
+                return jsonify({
+                    'success': True,
+                    'message': f'Model changed to {model_name}',
+                    'current_model': model_name
+                })
+            else:
+                return jsonify({'success': False, 'error': 'Failed to change model'})
+        else:
+            return jsonify({'success': False, 'error': 'Streaming layer not initialized'})
+    except Exception as e:
+        print(f"Error changing model: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'})
+
+@app.route('/api/refresh_models', methods=['POST'])
+def api_refresh_models():
+    """API endpoint to refresh available models"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    try:
+        if streaming_layer:
+            available_models = streaming_layer.refresh_models()
+            return jsonify({
+                'success': True,
+                'available_models': available_models,
+                'message': f'Found {len(available_models)} models'
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Streaming layer not initialized'})
+    except Exception as e:
+        print(f"Error refreshing models: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'})
+
+# Utility routes
 @app.route('/api/check_username')
 def check_username():
     """API endpoint to check if username is available"""
@@ -300,6 +516,7 @@ def check_password_strength():
         'feedback': feedback[:2] if feedback else ["Strong password!"]
     })
 
+# Database helper functions
 def authenticate_user(username, password):
     """Authenticate user credentials"""
     conn = sqlite3.connect('edgarai_users.db')
@@ -378,8 +595,9 @@ def get_user_info(user_id):
     }
 
 if __name__ == '__main__':
-    # Initialize database
+    # Initialize database and streaming layer
     init_db()
+    init_streaming_layer()
     
     # Create directories if they don't exist
     os.makedirs('webui/static/images', exist_ok=True)

@@ -48,6 +48,7 @@
     * terminal based trainers
 	* chat mini window
 	* subroutines
+    * new ui libary
 
 
 
@@ -55,11 +56,11 @@
 * sentence matching ✅
 * basic context engine ✅
 * follow up tree system ✅
-* Multi Q\&A system ✅
+* Multi Q&A system ✅
 * Multi Follow Up tree variation ❌
 * Group Sections Upgrade ❌
 * Word Variant System ✅
-* module system ❌
+* module system ✅
 * make WebUi ❌
 * Make login page ❌
 
