@@ -45,7 +45,9 @@
     # 0.4a - 
     * Topic Context System
     * Search format instead of load.
-    * terminal based trainer
+    * terminal based trainers
+	* chat mini window
+	* user train edgar
 
 
 
