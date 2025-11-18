@@ -42,12 +42,12 @@
     * make WebUi ❌
     * Make login page ❌
 
-    # 0.4a - 
+    # 0.4a - Workflow & Interface Update
     * Topic Context System
     * Search format instead of load.
     * terminal based trainers
 	* chat mini window
-	* user train edgar
+	* subroutines
 
 
 
