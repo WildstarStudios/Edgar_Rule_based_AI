@@ -51,7 +51,7 @@ class AdvancedChatbot:
                 'semantic_check': True
             },
             'WORD_VARIANTS': {
-                'fuzzy_threshold': 80  # Fuzzy matching threshold for variants
+                'fuzzy_threshold': 85  # Fuzzy matching threshold for variants
             }
         }
         
