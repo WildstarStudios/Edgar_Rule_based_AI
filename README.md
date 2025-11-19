@@ -39,8 +39,8 @@
     * Word Variant System ✅
     * Group Sections Upgrade ❌
     * Multi Follow Up tree variation ❌
-    * make WebUi ❌
-    * Make login page ❌
+    * make WebUi ✅
+    * Make login page ✅
 
     # 0.4a - Workflow & Interface Update
     * Topic Context System

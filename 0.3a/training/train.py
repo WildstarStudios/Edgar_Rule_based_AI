@@ -23,6 +23,7 @@ class TrainingGUI:
         self.scroll_frame = None
         self.model_changing = False
         self.group_cards = []
+        self.unsaved_changes = False
         
         # Responsive layout variables
         self.current_columns = 4
@@ -39,6 +40,9 @@ class TrainingGUI:
         
         # Ensure models folder exists (same as 0.1a)
         os.makedirs("models", exist_ok=True)
+        
+        # Set window close protocol for unsaved changes protection
+        self.root.protocol("WM_DELETE_WINDOW", self.confirm_exit)
         
         if not self.engine.available_models:
             self.root.after(100, self.prompt_create_first_model)
@@ -117,34 +121,78 @@ class TrainingGUI:
             if hasattr(self, 'scroll_frame'):
                 self.refresh_groups()
             self.update_model_dropdown()
+            self.clear_unsaved_changes()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load model: {str(e)}")
     
     def save_current_model(self):
         try:
             self.engine.save_current_model()
+            self.clear_unsaved_changes()
             return True
         except Exception as e:
             messagebox.showerror("Error", f"Failed to save model: {str(e)}")
             return False
+    
+    def mark_unsaved_changes(self):
+        """Mark that there are unsaved changes"""
+        if not self.unsaved_changes:
+            self.unsaved_changes = True
+            # Update window title and save button to indicate unsaved changes
+            original_title = "Edgar AI Training"
+            if not self.root.title().endswith(" *"):
+                self.root.title(f"{original_title} *")
+            # Update save button appearance
+            self.save_btn.config(text="💾 Save *", bg='#ffa500')
+    
+    def clear_unsaved_changes(self):
+        """Clear unsaved changes flag"""
+        self.unsaved_changes = False
+        # Restore original window title and save button
+        self.root.title("Edgar AI Training")
+        self.save_btn.config(text="💾 Save", bg='#00ff88')
+    
+    def confirm_exit(self):
+        """Confirm exit if there are unsaved changes"""
+        if self.unsaved_changes:
+            result = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before exiting?\n\n"
+                "Yes - Save and Exit\n"
+                "No - Exit without Saving\n"
+                "Cancel - Return to Application"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - Save and Exit
+                if self.save_current_model():
+                    self.root.destroy()
+                return
+            else:  # No - Exit without Saving
+                self.root.destroy()
+        else:
+            self.root.destroy()
     
     def on_model_switch_request(self, model_name):
         if self.model_changing:
             return
             
         if model_name and model_name != self.engine.current_model:
-            has_unsaved_changes = bool(self.engine.current_model and self.engine.qa_groups)
-            
-            if has_unsaved_changes:
+            # Check for unsaved changes
+            if self.unsaved_changes:
                 response = messagebox.askyesnocancel(
-                    "Save Changes", 
-                    f"Save changes to current model '{self.engine.current_model}' before switching?"
+                    "Unsaved Changes", 
+                    f"You have unsaved changes in '{self.engine.current_model}'. Save before switching?\n\n"
+                    "Yes - Save and Switch\n"
+                    "No - Switch without Saving\n"
+                    "Cancel - Stay on Current Model"
                 )
                 
-                if response is None:
+                if response is None:  # Cancel
                     self.model_combobox.set(self.engine.current_model)
                     return
-                elif response:
+                elif response:  # Yes - Save and Switch
                     if not self.save_current_model():
                         self.model_combobox.set(self.engine.current_model)
                         return
@@ -216,6 +264,18 @@ class TrainingGUI:
             
         self.model_combobox.bind('<<ComboboxSelected>>', 
                                lambda e: self.on_model_switch_request(self.model_combobox.get()))
+        
+        # NEW ORDER: Save, Edit, New Model
+        self.save_btn = tk.Button(
+            model_frame,
+            text="💾 Save",
+            command=self.save_current_model,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 9, 'bold'),
+            padx=12
+        )
+        self.save_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         tk.Button(
             model_frame,
@@ -716,6 +776,8 @@ class TrainingGUI:
             self.engine.add_qa_group(group_data)
             if self.save_current_model():
                 self.refresh_groups()
+            else:
+                self.mark_unsaved_changes()
         
         GroupEditor(self.root, on_save=on_save)
     
@@ -728,6 +790,8 @@ class TrainingGUI:
             self.engine.update_qa_group(index, group_data)
             if self.save_current_model():
                 self.refresh_groups()
+            else:
+                self.mark_unsaved_changes()
         
         GroupEditor(self.root, self.engine.get_qa_groups()[index], on_save)
     
@@ -740,6 +804,8 @@ class TrainingGUI:
             self.engine.delete_qa_group(index)
             if self.save_current_model():
                 self.refresh_groups()
+            else:
+                self.mark_unsaved_changes()
     
     def import_json(self):
         if not self.engine.current_model:
@@ -753,6 +819,8 @@ class TrainingGUI:
                 if self.save_current_model():
                     self.refresh_groups()
                     messagebox.showinfo("Success", f"Imported {count} groups")
+                else:
+                    self.mark_unsaved_changes()
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Import failed: {str(e)}")

@@ -4,11 +4,13 @@ from .dialogs import BaseDialog, QuestionAnswerEditor, BranchNameDialog
 
 class GroupEditor(BaseDialog):
     def __init__(self, parent, group_data=None, on_save=None):
-        super().__init__(parent, "QA Group Editor", 900, 650)
+        super().__init__(parent, "QA Group Editor", 800, 550)
         self.on_save = on_save
         self.group_data = group_data or {}
         self.available_topics = ["greeting", "programming", "ai", "gaming", "creative", "thanks", "general"]
         self.followup_data = []
+        self.unsaved_changes = False
+        self.original_data = {}
         
         # Make window resizable and set minimum size
         self.window.minsize(800, 500)
@@ -20,6 +22,12 @@ class GroupEditor(BaseDialog):
         
         if group_data:
             self.load_data()
+        
+        # Store original data for comparison
+        self.save_original_state()
+        
+        # Set window close protocol
+        self.window.protocol("WM_DELETE_WINDOW", self.confirm_close)
     
     def configure_ttk_styles(self):
         """Configure ttk styles to match the main application"""
@@ -186,6 +194,7 @@ class GroupEditor(BaseDialog):
         self.name_entry.icursor(tk.END)
         
         self.name_entry.bind('<Return>', lambda e: self.save_group())
+        self.name_entry.bind('<KeyRelease>', lambda e: self.mark_unsaved_changes())
         
         tk.Label(
             frame,
@@ -206,6 +215,7 @@ class GroupEditor(BaseDialog):
         )
         self.desc_entry.grid(row=1, column=1, sticky='ew', padx=(15, 0))
         self.desc_entry.bind('<Return>', lambda e: self.save_group())
+        self.desc_entry.bind('<KeyRelease>', lambda e: self.mark_unsaved_changes())
         
         return frame
     
@@ -340,6 +350,7 @@ class GroupEditor(BaseDialog):
             style='Dark.TCombobox'
         )
         topic_combo.grid(row=0, column=1, sticky='w', padx=(0, 30))
+        topic_combo.bind('<<ComboboxSelected>>', lambda e: self.mark_unsaved_changes())
         
         tk.Label(
             topic_priority_frame,
@@ -359,6 +370,7 @@ class GroupEditor(BaseDialog):
             style='Dark.TCombobox'
         )
         priority_combo.grid(row=0, column=3, sticky='w')
+        priority_combo.bind('<<ComboboxSelected>>', lambda e: self.mark_unsaved_changes())
         
         # Follow-up section
         followup_frame = tk.Frame(frame, bg='#252547')
@@ -419,7 +431,7 @@ class GroupEditor(BaseDialog):
         tk.Button(
             button_container,
             text="❌ Cancel",
-            command=self.window.destroy,
+            command=self.confirm_close,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 11, 'bold'),
@@ -427,7 +439,8 @@ class GroupEditor(BaseDialog):
             pady=10
         ).pack(side=tk.RIGHT, padx=(0, 10))
         
-        tk.Button(
+        # Main save button that changes state
+        self.save_btn = tk.Button(
             button_container,
             text="💾 Save Group",
             command=self.save_group,
@@ -436,13 +449,77 @@ class GroupEditor(BaseDialog):
             font=('Arial', 11, 'bold'),
             padx=25,
             pady=10
-        ).pack(side=tk.RIGHT)
+        )
+        self.save_btn.pack(side=tk.RIGHT)
         
         return frame
+    
+    def save_original_state(self):
+        """Save the original state for comparison"""
+        self.original_data = {
+            'name': self.name_var.get(),
+            'description': self.desc_var.get(),
+            'questions': list(self.questions_list.get(0, tk.END)),
+            'answers': list(self.answers_list.get(0, tk.END)),
+            'topic': self.topic_var.get(),
+            'priority': self.priority_var.get(),
+            'followup_count': self.count_nodes(self.followup_data)
+        }
+    
+    def has_changes(self):
+        """Check if there are any changes from the original state"""
+        current_data = {
+            'name': self.name_var.get(),
+            'description': self.desc_var.get(),
+            'questions': list(self.questions_list.get(0, tk.END)),
+            'answers': list(self.answers_list.get(0, tk.END)),
+            'topic': self.topic_var.get(),
+            'priority': self.priority_var.get(),
+            'followup_count': self.count_nodes(self.followup_data)
+        }
+        
+        return current_data != self.original_data
+    
+    def mark_unsaved_changes(self):
+        """Mark that there are unsaved changes"""
+        if not self.unsaved_changes and self.has_changes():
+            self.unsaved_changes = True
+            # Update save button to indicate unsaved changes
+            self.save_btn.config(text="💾 Save Group *", bg='#ffa500')
+    
+    def clear_unsaved_changes(self):
+        """Clear unsaved changes flag"""
+        self.unsaved_changes = False
+        self.save_original_state()
+        # Reset save button
+        self.save_btn.config(text="💾 Save Group", bg='#00ff88')
+    
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
+        if self.unsaved_changes:
+            result = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
+                "Cancel - Return to Editor"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - Save and Close
+                if self.save_group():
+                    self.window.destroy()
+                return
+            else:  # No - Close without Saving
+                self.window.destroy()
+        else:
+            self.window.destroy()
     
     def add_question(self):
         def save_question(text):
             self.questions_list.insert(tk.END, text)
+            self.mark_unsaved_changes()
         
         QuestionAnswerEditor(self.window, "question", on_save=save_question)
     
@@ -458,6 +535,7 @@ class GroupEditor(BaseDialog):
         def save_question(text):
             self.questions_list.delete(index)
             self.questions_list.insert(index, text)
+            self.mark_unsaved_changes()
         
         QuestionAnswerEditor(self.window, "question", current_text, save_question)
     
@@ -465,10 +543,12 @@ class GroupEditor(BaseDialog):
         selection = self.questions_list.curselection()
         if selection:
             self.questions_list.delete(selection[0])
+            self.mark_unsaved_changes()
     
     def add_answer(self):
         def save_answer(text):
             self.answers_list.insert(tk.END, text)
+            self.mark_unsaved_changes()
         
         QuestionAnswerEditor(self.window, "answer", on_save=save_answer)
     
@@ -484,6 +564,7 @@ class GroupEditor(BaseDialog):
         def save_answer(text):
             self.answers_list.delete(index)
             self.answers_list.insert(index, text)
+            self.mark_unsaved_changes()
         
         QuestionAnswerEditor(self.window, "answer", current_text, save_answer)
     
@@ -491,6 +572,7 @@ class GroupEditor(BaseDialog):
         selection = self.answers_list.curselection()
         if selection:
             self.answers_list.delete(selection[0])
+            self.mark_unsaved_changes()
     
     def edit_followup_tree(self):
         from .follow_tree import FollowUpEditor
@@ -502,6 +584,7 @@ class GroupEditor(BaseDialog):
                 self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
             else:
                 self.followup_status.config(text="No follow-up tree defined")
+            self.mark_unsaved_changes()
         
         FollowUpEditor(self.window, self.followup_data, on_save)
     
@@ -538,7 +621,7 @@ class GroupEditor(BaseDialog):
         if not group_name:
             messagebox.showwarning("Warning", "Group name is required.")
             self.name_entry.focus_set()
-            return
+            return False
         
         group_data = {
             'group_name': group_name,
@@ -553,4 +636,6 @@ class GroupEditor(BaseDialog):
         if self.on_save:
             self.on_save(group_data)
         
-        self.window.destroy()
+        self.clear_unsaved_changes()
+        messagebox.showinfo("Success", "Group saved successfully!")
+        return True

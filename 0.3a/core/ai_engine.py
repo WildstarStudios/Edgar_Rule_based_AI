@@ -109,13 +109,14 @@ class AdvancedChatbot:
             'last_detailed_topic': None,
             'available_follow_ups': {},
             
-            # TREE NAVIGATION SYSTEM - FULLY RESET
-            'active_tree': None,
-            'current_branch': None,
-            'branch_path': [],
-            'available_branches': [],
-            'tree_start_time': None,
-            'tree_messages': 0,
+            # ENHANCED TREE NAVIGATION SYSTEM - UPDATED FOR NEW JSON FORMAT
+            'active_tree': None,           # Current tree root (QA group)
+            'current_branch': None,        # Current branch in tree (follow_up dict)
+            'branch_path': [],             # Path to current branch for backtracking
+            'available_branches': [],      # Available next branches (children)
+            'tree_start_time': None,       # When tree was entered
+            'tree_messages': 0,            # Messages in current tree session
+            'tree_inactivity_count': 0,    # Messages since last tree activity
         }
     
     def load_configuration(self) -> configparser.ConfigParser:
@@ -340,14 +341,14 @@ class AdvancedChatbot:
         
         return ' '.join(normalized_words)
     
-    # ===== ENHANCED TREE NAVIGATION SYSTEM =====
+    # ===== ENHANCED TREE NAVIGATION SYSTEM FOR NEW JSON FORMAT =====
     
     def is_in_tree(self) -> bool:
         """Check if we're currently navigating a follow-up tree"""
         return self.conversation_context['active_tree'] is not None
     
     def enter_tree(self, group: dict):
-        """Enter a follow-up tree from a root group"""
+        """Enter a follow-up tree from a root group - UPDATED FOR NEW JSON FORMAT"""
         if not group.get('follow_ups'):
             return
         
@@ -357,6 +358,7 @@ class AdvancedChatbot:
         self.conversation_context['available_branches'] = group['follow_ups']
         self.conversation_context['tree_start_time'] = time.time()
         self.conversation_context['tree_messages'] = 0
+        self.conversation_context['tree_inactivity_count'] = 0
         
         self.performance_stats['tree_entries'] += 1
         print(f"🌳 Entered tree: {group.get('group_name', 'Unknown')}")
@@ -373,7 +375,7 @@ class AdvancedChatbot:
             print(f"🌳 Exited tree: {tree_name}")
     
     def navigate_to_branch(self, branch: dict):
-        """Navigate to a specific branch in the tree"""
+        """Navigate to a specific branch in the tree - UPDATED FOR NEW JSON FORMAT"""
         if not self.is_in_tree():
             return
         
@@ -381,10 +383,11 @@ class AdvancedChatbot:
         if self.conversation_context['current_branch']:
             self.conversation_context['branch_path'].append(self.conversation_context['current_branch'])
         
-        # Set new current branch and available branches
+        # Set new current branch and available branches (children in new format)
         self.conversation_context['current_branch'] = branch
         self.conversation_context['available_branches'] = branch.get('children', [])
         self.conversation_context['tree_messages'] += 1
+        self.conversation_context['tree_inactivity_count'] = 0  # Reset inactivity
         self.performance_stats['tree_navigations'] += 1
     
     def navigate_back(self) -> bool:
@@ -403,6 +406,7 @@ class AdvancedChatbot:
             self.conversation_context['available_branches'] = previous_branch.get('children', [])
         
         self.conversation_context['tree_messages'] += 1
+        self.conversation_context['tree_inactivity_count'] = 0  # Reset inactivity
         return True
     
     def get_current_tree_position(self) -> str:
@@ -420,7 +424,7 @@ class AdvancedChatbot:
         return " → ".join(path_names) if path_names else "Root"
     
     def find_branch_match(self, user_input: str) -> Optional[Tuple[dict, float]]:
-        """Find the best matching branch in available branches"""
+        """Find the best matching branch in available branches - UPDATED FOR NEW JSON FORMAT"""
         if not self.conversation_context['available_branches']:
             return None
         
@@ -430,19 +434,22 @@ class AdvancedChatbot:
         best_score = 0.0
         
         for branch in self.conversation_context['available_branches']:
-            branch_question = branch.get('question', '').lower().strip()
-            if not branch_question:
-                continue
+            # NEW JSON FORMAT: branch has 'questions' array, not single 'question'
+            branch_questions = branch.get('questions', [])
             
-            # ENHANCEMENT: Use normalized branch question with word variants
-            branch_normalized = self._normalize_with_variants(branch_question)
-            
-            # Use same matching as normal chat (not stricter)
-            similarity = fuzz.token_set_ratio(user_normalized, branch_normalized) / 100.0
-            
-            if similarity > best_score and similarity >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
-                best_score = similarity
-                best_match = branch
+            for branch_question in branch_questions:
+                if not branch_question:
+                    continue
+                
+                # ENHANCEMENT: Use normalized branch question with word variants
+                branch_normalized = self._normalize_with_variants(branch_question.lower().strip())
+                
+                # Use same matching as normal chat
+                similarity = fuzz.token_set_ratio(user_normalized, branch_normalized) / 100.0
+                
+                if similarity > best_score and similarity >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['min_acceptable']:
+                    best_score = similarity
+                    best_match = branch
         
         if best_match:
             return best_match, best_score
@@ -502,46 +509,60 @@ class AdvancedChatbot:
         
         return f"Available options: {', '.join(branch_names)}"
     
-    def should_exit_tree(self, user_input: str, current_tree_match: bool) -> bool:
-        """Determine if we should exit the tree based on user input"""
+    def should_exit_tree_due_to_inactivity(self) -> bool:
+        """Check if we should exit tree due to inactivity"""
         if not self.is_in_tree():
             return False
         
-        # ENHANCEMENT: Use normalized input for exit pattern matching
-        user_normalized = self._normalize_with_variants(user_input.lower().strip())
-        
-        # Explicit exit patterns
-        exit_patterns = [
-            r'^exit$',
-            r'^quit$',
-            r'stop',
-            r'new topic',
-            r'start over',
-            r'main menu'
-        ]
-        
-        for pattern in exit_patterns:
-            if re.search(pattern, user_normalized):
-                return True
-        
-        # Exit if no match in tree and user seems to be changing topic
-        if not current_tree_match:
-            # Check if this might be a completely different question
-            different_topic = self.is_different_topic(user_input)
-            if different_topic:
-                return True
+        # Exit tree after 5 messages of inactivity
+        if self.conversation_context['tree_inactivity_count'] >= 5:
+            return True
         
         return False
     
-    def is_different_topic(self, user_input: str) -> bool:
-        """Check if user input seems to be about a completely different topic"""
-        # ENHANCEMENT: Use normalized input for topic matching
-        user_normalized = self._normalize_with_variants(user_input.lower())
+    def handle_tree_context_decay(self, user_input: str, current_tree_match: bool):
+        """Handle tree context decay - exit tree if user clearly changes topic"""
+        if not self.is_in_tree():
+            return
+        
+        if current_tree_match:
+            # Reset inactivity counter when user engages with tree
+            self.conversation_context['tree_inactivity_count'] = 0
+        else:
+            # Increment inactivity counter
+            self.conversation_context['tree_inactivity_count'] += 1
+            
+            # Check if user is clearly changing topic
+            user_normalized = self._normalize_with_variants(user_input.lower().strip())
+            
+            # Explicit exit patterns
+            exit_patterns = [
+                r'^exit$',
+                r'^quit$',
+                r'stop',
+                r'new topic',
+                r'start over',
+                r'main menu',
+                r'never mind',
+                r'forget it'
+            ]
+            
+            for pattern in exit_patterns:
+                if re.search(pattern, user_normalized):
+                    self.exit_tree()
+                    return
+            
+            # Check if this is a completely different root topic
+            if self.is_clear_topic_switch(user_input):
+                self.conversation_context['tree_inactivity_count'] += 2  # Penalize more for topic switches
+    
+    def is_clear_topic_switch(self, user_input: str) -> bool:
+        """Check if user input is clearly switching to a different root topic"""
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
         
         # If it matches any root group strongly, it's probably a new topic
         for group in self.qa_groups:
             for question in group.get('questions', []):
-                # ENHANCEMENT: Use normalized question for matching
                 question_normalized = self._normalize_with_variants(question.lower())
                 similarity = fuzz.token_set_ratio(user_normalized, question_normalized) / 100.0
                 if similarity > 0.7:  # Strong match to a different root
@@ -586,7 +607,7 @@ class AdvancedChatbot:
         # ENHANCEMENT: Use normalized user input with word variants
         user_normalized = self._normalize_with_variants(user_question.lower().strip())
         
-        # Normal matching - REMOVED OLD "TELL ME MORE" SYSTEM
+        # Normal matching
         best_match = None
         best_score = 0.0
         best_match_type = "semantic"
@@ -678,7 +699,7 @@ class AdvancedChatbot:
     # ===== OPTIMIZED QUESTION PROCESSING =====
     
     def process_multiple_questions(self, user_input: str) -> List[Tuple]:
-        """Process input with tree navigation and word variants support"""
+        """Process input with tree navigation and word variants support - UPDATED FOR NEW JSON"""
         questions = self.split_questions(user_input)
         responses = []
         
@@ -687,47 +708,52 @@ class AdvancedChatbot:
                 continue
                 
             # FIRST: Handle tree navigation if we're in a tree
+            tree_match_occurred = False
+            
             if self.is_in_tree():
                 # Check for navigation commands
                 nav_response = self.handle_tree_navigation_commands(question)
                 if nav_response:
                     responses.append((question, nav_response, 0.9, [], "Tree Navigation", "navigation"))
                     self.update_conversation_context(question, nav_response, None, 0.9)
-                    continue
+                    tree_match_occurred = True
                 
                 # Try to match available branches
-                branch_match = self.find_branch_match(question)
-                if branch_match:
-                    branch, confidence = branch_match
-                    
-                    # Check confidence requirement
-                    if self.answer_confidence_requirement > 0 and confidence < self.answer_confidence_requirement:
-                        self.performance_stats['confidence_rejections'] += 1
-                        unknown_response = self.handle_unknown_question(question)
-                        responses.append((question, unknown_response, 0.0, [], None, "confidence_rejection"))
-                        self.update_conversation_context(question, unknown_response, None, 0.0)
-                    else:
-                        # Navigate to this branch
-                        self.navigate_to_branch(branch)
-                        answer = branch.get('answer', '')
-                        responses.append((question, answer, confidence, [], 
-                                        self.conversation_context['active_tree'].get('group_name', 'Unknown'), 
-                                        "tree_branch"))
-                        self.update_conversation_context(question, answer, 
-                                                       self.conversation_context['active_tree'], confidence)
-                    
-                    # Check if we should exit tree
-                    if self.should_exit_tree(question, True):
-                        self.exit_tree()
-                    
+                if not tree_match_occurred:
+                    branch_match = self.find_branch_match(question)
+                    if branch_match:
+                        branch, confidence = branch_match
+                        tree_match_occurred = True
+                        
+                        # Check confidence requirement
+                        if self.answer_confidence_requirement > 0 and confidence < self.answer_confidence_requirement:
+                            self.performance_stats['confidence_rejections'] += 1
+                            unknown_response = self.handle_unknown_question(question)
+                            responses.append((question, unknown_response, 0.0, [], None, "confidence_rejection"))
+                            self.update_conversation_context(question, unknown_response, None, 0.0)
+                        else:
+                            # Navigate to this branch
+                            self.navigate_to_branch(branch)
+                            # NEW JSON FORMAT: branch has 'answers' array, not single 'answer'
+                            answer = self.get_random_answer(branch.get('answers', []))
+                            responses.append((question, answer, confidence, [], 
+                                            self.conversation_context['active_tree'].get('group_name', 'Unknown'), 
+                                            "tree_branch"))
+                            self.update_conversation_context(question, answer, 
+                                                           self.conversation_context['active_tree'], confidence)
+                
+                # Handle tree context decay (check if we should exit tree)
+                self.handle_tree_context_decay(question, tree_match_occurred)
+                
+                # Check for inactivity-based exit
+                if self.should_exit_tree_due_to_inactivity():
+                    self.exit_tree()
+                
+                # If we handled this question in the tree, continue to next question
+                if tree_match_occurred:
                     continue
-                else:
-                    # No branch match - check if we should exit tree
-                    if self.should_exit_tree(question, False):
-                        self.exit_tree()
-                        # Continue with normal processing below
             
-            # SECOND: Proceed with normal matching
+            # SECOND: Proceed with normal matching if not handled by tree
             corrected_question, corrections = self.auto_correct_input(question)
             match_result = self.find_best_match(corrected_question)
             
@@ -792,7 +818,7 @@ class AdvancedChatbot:
             'bot': bot_response,
             'timestamp': time.time(),
             'confidence': confidence,
-            'matched_topic': matched_group.get('topic') if matched_group else None,
+            'matched_topic': matched_group.get('group_name') if matched_group else None,
         })
         
         # Extract entities
@@ -860,6 +886,11 @@ class AdvancedChatbot:
         if self.is_in_tree():
             tree_pos = self.get_current_tree_position()
             summary.append(f"🌳 {tree_pos}")
+            
+            # Show inactivity warning
+            inactivity = self.conversation_context['tree_inactivity_count']
+            if inactivity > 0:
+                summary.append(f"({5 - inactivity} messages until topic reset)")
         
         return " | ".join(summary) if summary else "Minimal context"
     
@@ -898,6 +929,7 @@ class AdvancedChatbot:
         print("Type 'confidence <value>' to set minimum confidence requirement (0.0-1.0, 0.0 = disabled)")
         print(f"✨ Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
         print("✨ NEW: Natural tree navigation - say 'go back', 'what are my options', etc.")
+        print("✨ NEW: Smart context decay - trees auto-exit after 5 inactive messages")
         print(f"✨ NEW: Word variants system - {len(self.word_variants)} variant sets loaded")
         print("-" * 60)
         

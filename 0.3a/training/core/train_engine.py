@@ -6,7 +6,6 @@ class ModelManager:
     def __init__(self, parent, on_model_change=None):
         self.parent = parent
         self.on_model_change = on_model_change
-        # Changed to use the same models folder as 0.1a
         self.models_folder = "models"
         self.current_model = None
         self.available_models = []
@@ -146,6 +145,7 @@ class TrainingEngine:
         """Save current model with QA groups"""
         if not self.current_model:
             raise ValueError("No model selected")
+        
         return self.model_manager.save_model(self.current_model, self.qa_groups)
     
     def update_model_info(self, description="", author="", version=""):
