@@ -229,6 +229,10 @@
             border-radius: 18px;
             line-height: 1.4;
             word-wrap: break-word;
+            min-height: 20px;
+            max-width: 100%;
+            overflow-wrap: break-word;
+            word-break: break-word;
         }
 
         .user .message-content {
@@ -242,6 +246,37 @@
             border: 1px solid {{ colors.border }};
             border-bottom-left-radius: 4px;
             color: {{ colors.text_primary }};
+        }
+
+        /* ChatGPT-style Thinking Animation */
+        .thinking-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 12px 16px;
+        }
+
+        .thinking-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background-color: {{ colors.text_secondary }};
+            animation: thinkingPulse 1.5s infinite ease-in-out;
+        }
+
+        .thinking-dot:nth-child(1) { animation-delay: 0s; }
+        .thinking-dot:nth-child(2) { animation-delay: 0.2s; }
+        .thinking-dot:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes thinkingPulse {
+            0%, 100% { 
+                transform: scale(1);
+                opacity: 0.7;
+            }
+            50% { 
+                transform: scale(1.2);
+                opacity: 1;
+            }
         }
 
         .typing-indicator {
@@ -459,27 +494,6 @@
             background: {{ colors.accent_primary }};
         }
 
-        /* Context info */
-        .context-info {
-            background: {{ colors.bg_tertiary }};
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin: 5px 0;
-            font-size: 0.8em;
-            color: {{ colors.text_secondary }};
-            border-left: 3px solid {{ colors.accent_primary }};
-        }
-
-        .module-info {
-            background: {{ colors.bg_tertiary }};
-            padding: 8px 12px;
-            border-radius: 8px;
-            margin: 5px 0;
-            font-size: 0.8em;
-            color: {{ colors.accent_success }};
-            border-left: 3px solid {{ colors.accent_success }};
-        }
-
         @media (max-width: 768px) {
             .sidebar {
                 width: 80px;
@@ -643,6 +657,11 @@
         const welcomeMessage = document.getElementById('welcomeMessage');
         const charCount = document.getElementById('charCount');
 
+        // Streaming variables
+        let currentBotMessage = null;
+        let currentBotMessageContent = null;
+        let thinkingIndicator = null;
+
         // Initialize character count
         updateCharCount();
 
@@ -713,20 +732,192 @@
             updateCharCount();
             updateSendButtonState();
             
-            // Show typing indicator
-            showTypingIndicator();
+            // Reset streaming variables for new message
+            currentBotMessage = null;
+            currentBotMessageContent = null;
             
-            // Send message to backend for processing via streaming layer
-            processMessageWithBackend(message);
+            // Show thinking indicator (ChatGPT style)
+            showThinkingIndicator();
+            
+            // Send message to backend for streaming processing
+            processMessageWithStreaming(message);
         }
 
-        async function processMessageWithBackend(message) {
+        async function processMessageWithStreaming(message) {
             try {
+                isProcessing = true;
+                updateSendButtonState();
+                
                 const response = await fetch('/api/chat', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
+                    'Accept': 'text/plain'
                     },
+                    body: JSON.stringify({ message: message })
+                });
+
+                if (!response.ok) {
+                    throw new Error('Network response was not ok');
+                }
+
+                const reader = response.body.getReader();
+                const decoder = new TextDecoder();
+                
+                while (true) {
+                    const { done, value } = await reader.read();
+                    if (done) break;
+                    
+                    const chunk = decoder.decode(value);
+                    const lines = chunk.split('\n');
+                    
+                    for (const line of lines) {
+                        if (line.startsWith('data: ')) {
+                            try {
+                                const data = JSON.parse(line.substring(6));
+                                handleStreamData(data);
+                            } catch (e) {
+                                console.error('Error parsing stream data:', e);
+                            }
+                        }
+                    }
+                }
+                
+            } catch (error) {
+                console.error('Error:', error);
+                removeThinkingIndicator();
+                if (currentBotMessage) {
+                    updateBotMessageContent("I'm having trouble connecting to the AI system. Please try again later.");
+                } else {
+                    addMessage('bot', "I'm having trouble connecting to the AI system. Please try again later.");
+                }
+                isProcessing = false;
+                updateSendButtonState();
+            }
+        }
+
+        function handleStreamData(data) {
+            switch (data.type) {
+                case 'stream':
+                    // If this is the first stream data and thinking indicator is still there, remove it
+                    if (thinkingIndicator && !currentBotMessage) {
+                        removeThinkingIndicator();
+                        createBotMessageElement();
+                    }
+                    // Append character to bot message
+                    if (currentBotMessageContent) {
+                        currentBotMessageContent.textContent += data.data;
+                        scrollToBottom();
+                    }
+                    break;
+                case 'complete':
+                    // Streaming complete
+                    isProcessing = false;
+                    updateSendButtonState();
+                    
+                    // Store the complete message
+                    if (currentBotMessageContent) {
+                        messages.push({ 
+                            sender: 'bot', 
+                            content: currentBotMessageContent.textContent, 
+                            timestamp: new Date() 
+                        });
+                    }
+                    
+                    // Reset streaming variables for next message
+                    currentBotMessage = null;
+                    currentBotMessageContent = null;
+                    break;
+                case 'error':
+                    console.error('Stream error:', data.message);
+                    removeThinkingIndicator();
+                    if (currentBotMessageContent) {
+                        updateBotMessageContent("Error: " + data.message);
+                    } else {
+                        addMessage('bot', "Error: " + data.message);
+                    }
+                    isProcessing = false;
+                    updateSendButtonState();
+                    
+                    // Reset streaming variables on error
+                    currentBotMessage = null;
+                    currentBotMessageContent = null;
+                    break;
+            }
+        }
+
+        function showThinkingIndicator() {
+            isProcessing = true;
+            updateSendButtonState();
+            
+            const thinkingDiv = document.createElement('div');
+            thinkingDiv.className = 'message bot';
+            thinkingDiv.id = 'thinkingIndicator';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = 'E';
+            
+            const contentDiv = document.createElement('div');
+            contentDiv.className = 'message-content thinking-indicator';
+            
+            // Add 3 thinking dots (ChatGPT style)
+            for (let i = 0; i < 3; i++) {
+                const dot = document.createElement('div');
+                dot.className = 'thinking-dot';
+                contentDiv.appendChild(dot);
+            }
+            
+            thinkingDiv.appendChild(avatar);
+            thinkingDiv.appendChild(contentDiv);
+            
+            messagesContainer.appendChild(thinkingDiv);
+            thinkingIndicator = thinkingDiv;
+            scrollToBottom();
+        }
+
+        function removeThinkingIndicator() {
+            const indicator = document.getElementById('thinkingIndicator');
+            if (indicator) {
+                indicator.remove();
+                thinkingIndicator = null;
+            }
+        }
+
+        function createBotMessageElement() {
+            currentBotMessage = document.createElement('div');
+            currentBotMessage.className = 'message bot';
+            
+            const avatar = document.createElement('div');
+            avatar.className = 'message-avatar';
+            avatar.textContent = 'E';
+            
+            currentBotMessageContent = document.createElement('div');
+            currentBotMessageContent.className = 'message-content';
+            currentBotMessageContent.textContent = '';
+            
+            currentBotMessage.appendChild(avatar);
+            currentBotMessage.appendChild(currentBotMessageContent);
+            
+            messagesContainer.appendChild(currentBotMessage);
+            scrollToBottom();
+        }
+
+        function updateBotMessageContent(content) {
+            if (currentBotMessageContent) {
+                currentBotMessageContent.textContent = content;
+                scrollToBottom();
+            }
+        }
+
+        // Legacy function for quick actions (non-streaming)
+        async function processMessageLegacy(message) {
+            try {
+                const response = await fetch('/api/chat_legacy', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        },
                     body: JSON.stringify({ message: message })
                 });
 
@@ -736,39 +927,19 @@
 
                 const data = await response.json();
                 
-                // Remove typing indicator
-                removeTypingIndicator();
+                removeThinkingIndicator();
                 
-                // Display the response
                 if (data.success && data.response) {
-                    displayBotResponse(data.response, data.context, data.module_info);
+                    addMessage('bot', data.response);
                 } else {
-                    displayBotResponse("I'm sorry, I couldn't process your message. Please try again.", null, null);
+                    addMessage('bot', "I'm sorry, I couldn't process your message. Please try again.");
                 }
                 
             } catch (error) {
                 console.error('Error:', error);
-                removeTypingIndicator();
-                displayBotResponse("I'm having trouble connecting to the AI system. Please try again later.", null, null);
+                removeThinkingIndicator();
+                addMessage('bot', "I'm having trouble connecting to the AI system. Please try again later.");
             }
-        }
-
-        function displayBotResponse(response, context, moduleInfo) {
-            isProcessing = false;
-            updateSendButtonState();
-            
-            // Add context info if available
-            if (context && context !== "Minimal context") {
-                addContextInfo(context);
-            }
-            
-            // Add module info if available
-            if (moduleInfo) {
-                addModuleInfo(moduleInfo);
-            }
-            
-            // Display the main response
-            addMessage('bot', response);
         }
 
         function addMessage(sender, content) {
@@ -791,57 +962,6 @@
             
             // Store message
             messages.push({ sender, content, timestamp: new Date() });
-        }
-
-        function addContextInfo(context) {
-            const contextDiv = document.createElement('div');
-            contextDiv.className = 'context-info';
-            contextDiv.textContent = `🧠 ${context}`;
-            messagesContainer.appendChild(contextDiv);
-            scrollToBottom();
-        }
-
-        function addModuleInfo(moduleInfo) {
-            const moduleDiv = document.createElement('div');
-            moduleDiv.className = 'module-info';
-            moduleDiv.textContent = `🔄 ${moduleInfo}`;
-            messagesContainer.appendChild(moduleDiv);
-            scrollToBottom();
-        }
-
-        function showTypingIndicator() {
-            isProcessing = true;
-            updateSendButtonState();
-            
-            const typingDiv = document.createElement('div');
-            typingDiv.className = 'message bot';
-            typingDiv.id = 'typingIndicator';
-            
-            const avatar = document.createElement('div');
-            avatar.className = 'message-avatar';
-            avatar.textContent = 'E';
-            
-            const contentDiv = document.createElement('div');
-            contentDiv.className = 'message-content typing-indicator';
-            
-            for (let i = 0; i < 3; i++) {
-                const dot = document.createElement('div');
-                dot.className = 'typing-dot';
-                contentDiv.appendChild(dot);
-            }
-            
-            typingDiv.appendChild(avatar);
-            typingDiv.appendChild(contentDiv);
-            
-            messagesContainer.appendChild(typingDiv);
-            scrollToBottom();
-        }
-
-        function removeTypingIndicator() {
-            const typingIndicator = document.getElementById('typingIndicator');
-            if (typingIndicator) {
-                typingIndicator.remove();
-            }
         }
 
         function scrollToBottom() {
@@ -867,6 +987,11 @@
                 updateCharCount();
                 updateSendButtonState();
                 
+                // Reset streaming variables
+                currentBotMessage = null;
+                currentBotMessageContent = null;
+                thinkingIndicator = null;
+                
                 // Reset chat on backend
                 fetch('/api/reset_chat', { method: 'POST' })
                     .then(response => response.json())
@@ -886,8 +1011,38 @@
                 showSystemInfo();
             } else {
                 chatInput.value = action;
-                sendMessage();
+                // Use legacy non-streaming for quick actions for faster response
+                sendLegacyMessage();
             }
+        }
+
+        function sendLegacyMessage() {
+            const message = chatInput.value.trim();
+            if (!message || isProcessing || message.length > MAX_CHARS) return;
+
+            // Hide welcome message if it's the first message
+            if (welcomeMessage && welcomeMessage.style.display !== 'none') {
+                welcomeMessage.style.display = 'none';
+            }
+
+            // Add user message to UI
+            addMessage('user', message);
+            
+            // Clear input and reset height
+            chatInput.value = '';
+            chatInput.style.height = 'auto';
+            updateCharCount();
+            updateSendButtonState();
+            
+            // Reset streaming variables for new message
+            currentBotMessage = null;
+            currentBotMessageContent = null;
+            
+            // Show thinking indicator
+            showThinkingIndicator();
+            
+            // Use legacy non-streaming processing
+            processMessageLegacy(message);
         }
 
         async function showSystemInfo() {
@@ -917,19 +1072,19 @@
         function showHelp() {
             const helpText = `🤖 Edgar AI Assistant Help
 
-Available Commands:
-• "tell me more" - Get detailed explanations
-• Ask about programming, AI, or any topic
-• The system automatically routes to appropriate modules
-• Use natural language - I understand context
+    Available Commands:
+    • "tell me more" - Get detailed explanations
+    • Ask about programming, AI, or any topic
+    • The system automatically routes to appropriate modules
+    • Use natural language - I understand context
 
-Features:
-• Rule-based AI with pattern matching
-• Module integration for specialized tasks
-• Conversation trees for follow-up questions
-• Fuzzy matching for better understanding
+    Features:
+    • Rule-based AI with pattern matching
+    • Module integration for specialized tasks
+    • Conversation trees for follow-up questions
+    • Fuzzy matching for better understanding
 
-Tip: Just chat naturally and I'll route your questions to the right place!`;
+    Tip: Just chat naturally and I'll route your questions to the right place!`;
 
             if (welcomeMessage.style.display === 'none') {
                 addMessage('bot', helpText);

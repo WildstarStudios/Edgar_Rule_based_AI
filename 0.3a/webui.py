@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify
+from flask import Flask, render_template, request, redirect, url_for, session, flash, jsonify, Response
 import sqlite3
 import os
 import hashlib
@@ -6,6 +6,7 @@ import secrets
 from datetime import datetime, timedelta
 import re
 import json
+import time
 from core.layer import create_streaming_layer
 
 app = Flask(__name__, 
@@ -293,22 +294,100 @@ def api_chat():
     if not user_message:
         return jsonify({'success': False, 'error': 'Empty message'})
     
+    def generate():
+        try:
+            if not streaming_layer:
+                yield f"data: {json.dumps({'type': 'error', 'message': 'Streaming layer not initialized'})}\n\n"
+                return
+            
+            # Process the message through the streaming layer
+            responses = streaming_layer.process_message(user_message)
+            
+            # Handle responses - ONLY return the main response text, no context or module info
+            if responses:
+                # Use the first response
+                response_data = responses[0]
+                
+                # Handle different response formats
+                if len(response_data) == 6:
+                    # AI Engine format: (original_question, answer, confidence, corrections, matched_group, match_type)
+                    original_question, answer, confidence, corrections, matched_group, match_type = response_data
+                    response_text = answer
+                    
+                elif len(response_data) == 3:
+                    # Module routing format: (answer, confidence, source)
+                    answer, confidence, source = response_data
+                    response_text = answer
+                    
+                else:
+                    # Unknown format
+                    response_text = str(response_data[0]) if response_data else "I received your message."
+                    
+            else:
+                # No responses - use fallback
+                response_text = "I'm not sure how to respond to that. Could you try rephrasing your question?"
+            
+            # Get streaming configuration from layer
+            config = streaming_layer.get_configuration()
+            letter_streaming = config.get('letter_streaming', False)
+            speed_limit = config.get('speed_limit', True)
+            
+            # Stream ONLY the response text - no context or module info
+            if response_text:
+                if letter_streaming:
+                    # Stream character by character
+                    for char in response_text:
+                        yield f"data: {json.dumps({'type': 'stream', 'data': char})}\n\n"
+                        if speed_limit:
+                            # Use layer's natural streaming speed by letting it control timing
+                            time.sleep(0.02)
+                else:
+                    # Stream word by word
+                    words = response_text.split(' ')
+                    for i, word in enumerate(words):
+                        # Add space between words (but not before the first word)
+                        if i > 0:
+                            yield f"data: {json.dumps({'type': 'stream', 'data': ' '})}\n\n"
+                        
+                        # Stream the word
+                        yield f"data: {json.dumps({'type': 'stream', 'data': word})}\n\n"
+                        if speed_limit:
+                            time.sleep(0.03)
+                
+                # Send completion signal
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+            else:
+                yield f"data: {json.dumps({'type': 'complete'})}\n\n"
+                
+        except Exception as e:
+            print(f"Error processing chat message: {e}")
+            yield f"data: {json.dumps({'type': 'error', 'message': 'Internal server error'})}\n\n"
+    
+    return Response(generate(), mimetype='text/plain')
+
+@app.route('/api/chat_legacy', methods=['POST'])
+def api_chat_legacy():
+    """Legacy API endpoint for non-streaming requests (for quick actions)"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    data = request.get_json()
+    user_message = data.get('message', '').strip()
+    
+    if not user_message:
+        return jsonify({'success': False, 'error': 'Empty message'})
+    
     try:
         if not streaming_layer:
             return jsonify({
                 'success': True,
-                'response': "I'm currently initializing. Please try again in a moment.",
-                'context': 'System Initializing',
-                'module_info': None
+                'response': "I'm currently initializing. Please try again in a moment."
             })
         
         # Process the message through the streaming layer
         responses = streaming_layer.process_message(user_message)
         
-        # Get context summary
-        context = streaming_layer.get_context_summary()
-        
-        # Handle responses
+        # Handle responses - ONLY return the main response text
         if responses:
             # Use the first response
             response_data = responses[0]
@@ -319,33 +398,22 @@ def api_chat():
                 original_question, answer, confidence, corrections, matched_group, match_type = response_data
                 response_text = answer
                 
-                # Create module info
-                if matched_group:
-                    module_info = f"AI Engine: {matched_group} ({match_type}, confidence: {confidence:.2f})"
-                else:
-                    module_info = f"AI Engine ({match_type}, confidence: {confidence:.2f})"
-                    
             elif len(response_data) == 3:
                 # Module routing format: (answer, confidence, source)
                 answer, confidence, source = response_data
                 response_text = answer
-                module_info = source
                 
             else:
                 # Unknown format
                 response_text = str(response_data[0]) if response_data else "I received your message."
-                module_info = "Unknown response format"
                 
         else:
             # No responses - use fallback
             response_text = "I'm not sure how to respond to that. Could you try rephrasing your question?"
-            module_info = "No matching response found"
         
         return jsonify({
             'success': True,
-            'response': response_text,
-            'context': context,
-            'module_info': module_info
+            'response': response_text
         })
         
     except Exception as e:
@@ -394,7 +462,8 @@ def api_chat_status():
                     'streaming_speed': config['streaming_speed'],
                     'letter_streaming': config['letter_streaming'],
                     'confidence_requirement': config['confidence_requirement'],
-                    'routing_threshold': config['routing_threshold']
+                    'routing_threshold': config['routing_threshold'],
+                    'speed_limit': config['speed_limit']
                 }
             })
         else:
@@ -456,6 +525,41 @@ def api_refresh_models():
             return jsonify({'success': False, 'error': 'Streaming layer not initialized'})
     except Exception as e:
         print(f"Error refreshing models: {e}")
+        return jsonify({'success': False, 'error': 'Internal server error'})
+
+@app.route('/api/update_streaming_settings', methods=['POST'])
+def api_update_streaming_settings():
+    """API endpoint to update streaming settings"""
+    if 'user_id' not in session:
+        return jsonify({'success': False, 'error': 'Not logged in'})
+    
+    data = request.get_json()
+    
+    try:
+        if streaming_layer:
+            # Update streaming speed if provided
+            if 'streaming_speed' in data:
+                streaming_layer.set_streaming_speed(data['streaming_speed'])
+            
+            # Update letter streaming if provided
+            if 'letter_streaming' in data:
+                if data['letter_streaming']:
+                    streaming_layer.toggle_letter_streaming()
+            
+            # Update speed limit if provided
+            if 'speed_limit' in data:
+                if not data['speed_limit']:
+                    streaming_layer.toggle_speed_limit()
+            
+            return jsonify({
+                'success': True,
+                'message': 'Streaming settings updated',
+                'configuration': streaming_layer.get_configuration()
+            })
+        else:
+            return jsonify({'success': False, 'error': 'Streaming layer not initialized'})
+    except Exception as e:
+        print(f"Error updating streaming settings: {e}")
         return jsonify({'success': False, 'error': 'Internal server error'})
 
 # Utility routes
