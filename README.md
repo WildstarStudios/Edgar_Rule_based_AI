@@ -7,7 +7,7 @@
 # Downloadable Builds
 * stable builds will be compiled with Nuitka.
 * for speed development builds will be packaged with PyInstaller.
-* you can now get 0.3a https://drive.proton.me/urls/383FR1B88W#nOsm7CsYAyWt
+* you can now get 0.3a https://drive.proton.me/urls/383FR1B88W#nOsm7CsYAyWt (outdated! new upload tonight)
 
 
 # 📢 Notice About Training Edgar
