@@ -4,6 +4,7 @@ Handles time-related queries with summary responses.
 """
 
 import datetime
+import Levenshtein
 from typing import Optional
 try:
     from fuzzywuzzy import process as fuzzy_process, fuzz

@@ -1,6 +1,7 @@
 # core/modules/search.py
 from fuzzywuzzy import fuzz
 from ddgs import DDGS
+import Levenshtein
 import time
 import re
 

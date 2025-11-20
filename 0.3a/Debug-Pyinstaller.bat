@@ -1,4 +1,5 @@
 @echo off
+
 set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a\.venv\Scripts\pyinstaller.exe
 set PACKAGE_DIR=dist\package
 
@@ -30,6 +31,8 @@ echo Building chat-0.3a.exe...
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
   --hidden-import "ddgs" ^
+  --hidden-import "Levenshtein" ^
+  --hidden-import "Levenshtein.levenshtein_cpp" ^
   main.py
 
 REM ============================================================
@@ -52,6 +55,8 @@ echo Building tty-0.3a.exe...
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
   --hidden-import "ddgs" ^
+  --hidden-import "Levenshtein" ^
+  --hidden-import "Levenshtein.levenshtein_cpp" ^
   tty.py
 
 REM ============================================================
@@ -86,19 +91,26 @@ echo Building route-trainer-0.3a.exe...
   "route trainer.py"
 
 REM ============================================================
-REM Build visualizer.exe from Rule_Viewer\Visulizer.py for 0.3a
+REM Build webui.exe from webui.py (Web interface app) for 0.3a
 REM ============================================================
-echo Building visualizer-0.3a.exe...
+echo Building webui-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
-  --name "visualizer-0.3a" ^
+  --name "webui-0.3a" ^
+  --add-data "config.cfg;." ^
   --add-data "resources;resources" ^
   --add-data "models;models" ^
   --add-data "core;core" ^
+  --add-data "webui;webui" ^
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
-  "Rule_Viewer\Visulizer.py"
+  --hidden-import "pytz" ^
+  --hidden-import "requests" ^
+  --hidden-import "ddgs" ^
+  --hidden-import "Levenshtein" ^
+  --hidden-import "Levenshtein.levenshtein_cpp" ^
+  webui.py
 
 REM ============================================================
 REM Copy additional resource files to package directory
@@ -123,7 +135,7 @@ echo - chat-0.3a.exe      - Main Edgar AI application (GUI)
 echo - tty-0.3a.exe       - Terminal/Command Line interface
 echo - train-0.3a.exe     - Training application
 echo - route-trainer-0.3a.exe - Routing configuration tool
-echo - visualizer-0.3a.exe - Rule visualization tool
+echo - webui-0.3a.exe     - Web interface application
 echo - config.cfg         - Configuration file
 echo - resources\         - Routing configuration and resources
 echo - models\           - AI model data
@@ -133,7 +145,7 @@ echo 1. Run chat-0.3a.exe to start the main AI assistant (GUI)
 echo 2. Run tty-0.3a.exe to start the terminal interface
 echo 3. Run train-0.3a.exe to train new AI models
 echo 4. Run route-trainer-0.3a.exe to configure module routing
-echo 5. Run visualizer-0.3a.exe to visualize rule structures
+echo 5. Run webui-0.3a.exe to start the web interface
 echo.
 echo TTY Interface Features:
 echo - Full terminal/command line interface
@@ -164,7 +176,6 @@ echo ========================================
 echo.
 echo Executables and resources are in: %PACKAGE_DIR%
 echo.
+pause
 echo Opening distribution folder...
 explorer "%PACKAGE_DIR%"
-
-pause

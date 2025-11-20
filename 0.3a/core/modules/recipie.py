@@ -1,4 +1,5 @@
 # core/modules/recipe.py
+import Levenshtein
 from fuzzywuzzy import fuzz
 
 module_mode = True  # Enable multi-turn mode - NEVER set this to False in process function

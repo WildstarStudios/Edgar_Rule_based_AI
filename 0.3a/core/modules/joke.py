@@ -1,4 +1,5 @@
 # core/modules/joke.py
+import Levenshtein
 from fuzzywuzzy import fuzz
 
 module_mode = True  # Enable multi-turn mode

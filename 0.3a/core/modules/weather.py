@@ -5,6 +5,7 @@ Handles weather-related queries with Open-Meteo API and summary responses.
 
 import time
 import requests
+import Levenshtein
 from typing import Optional, Callable
 try:
     from fuzzywuzzy import process as fuzzy_process, fuzz
