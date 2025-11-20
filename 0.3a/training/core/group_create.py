@@ -11,6 +11,7 @@ class GroupEditor(BaseDialog):
         self.followup_data = []
         self.unsaved_changes = False
         self.original_data = {}
+        self.saving = False  # Prevent multiple saves
         
         # Make window resizable and set minimum size
         self.window.minsize(800, 500)
@@ -193,7 +194,8 @@ class GroupEditor(BaseDialog):
         self.name_entry.focus_set()
         self.name_entry.icursor(tk.END)
         
-        self.name_entry.bind('<Return>', lambda e: self.save_group())
+        # FIXED: Remove the Enter key binding that triggers save
+        # Only bind KeyRelease for unsaved changes tracking
         self.name_entry.bind('<KeyRelease>', lambda e: self.mark_unsaved_changes())
         
         tk.Label(
@@ -202,7 +204,7 @@ class GroupEditor(BaseDialog):
             font=('Arial', 11, 'bold'),
             bg='#252547',
             fg='white'
-        ).grid(row=1, column=0, sticky='w', pady=(0, 0))
+        ).grid(row=1, column=0, sticky='w', pady=(0, 12))
         
         self.desc_var = tk.StringVar()
         self.desc_entry = tk.Entry(
@@ -213,11 +215,40 @@ class GroupEditor(BaseDialog):
             fg='white',
             insertbackground='white'
         )
-        self.desc_entry.grid(row=1, column=1, sticky='ew', padx=(15, 0))
-        self.desc_entry.bind('<Return>', lambda e: self.save_group())
+        self.desc_entry.grid(row=1, column=1, sticky='ew', padx=(15, 0), pady=(0, 12))
+        
+        # FIXED: Remove the Enter key binding that triggers save
+        # Only bind KeyRelease for unsaved changes tracking
         self.desc_entry.bind('<KeyRelease>', lambda e: self.mark_unsaved_changes())
         
+        # NEW: Section selection
+        tk.Label(
+            frame,
+            text="Section:",
+            font=('Arial', 11, 'bold'),
+            bg='#252547',
+            fg='white'
+        ).grid(row=2, column=0, sticky='w', pady=(0, 0))
+        
+        self.section_var = tk.StringVar()
+        # This will be populated when the dialog is shown
+        self.section_combo = ttk.Combobox(
+            frame,
+            textvariable=self.section_var,
+            state='readonly',
+            width=20,
+            style='Dark.TCombobox'
+        )
+        self.section_combo.grid(row=2, column=1, sticky='w', padx=(15, 0))
+        self.section_combo.bind('<<ComboboxSelected>>', lambda e: self.mark_unsaved_changes())
+        
         return frame
+    
+    def on_name_enter(self, event):
+        """Handle Enter key in name/description fields - do nothing"""
+        # FIXED: Completely removed the save functionality
+        # Just return "break" to prevent any default behavior
+        return "break"
     
     def setup_qa_sections(self, parent):
         container = tk.Frame(parent, bg='#1a1a2e')
@@ -439,10 +470,10 @@ class GroupEditor(BaseDialog):
             pady=10
         ).pack(side=tk.RIGHT, padx=(0, 10))
         
-        # Main save button that changes state
+        # Main save button that changes state - changed from "Create" to "Save"
         self.save_btn = tk.Button(
             button_container,
-            text="💾 Save Group",
+            text="💾 Save Group",  # Always says "Save" now, not "Create"
             command=self.save_group,
             bg='#00ff88',
             fg='black',
@@ -463,6 +494,7 @@ class GroupEditor(BaseDialog):
             'answers': list(self.answers_list.get(0, tk.END)),
             'topic': self.topic_var.get(),
             'priority': self.priority_var.get(),
+            'section': self.section_var.get(),
             'followup_count': self.count_nodes(self.followup_data)
         }
     
@@ -475,6 +507,7 @@ class GroupEditor(BaseDialog):
             'answers': list(self.answers_list.get(0, tk.END)),
             'topic': self.topic_var.get(),
             'priority': self.priority_var.get(),
+            'section': self.section_var.get(),
             'followup_count': self.count_nodes(self.followup_data)
         }
         
@@ -610,32 +643,49 @@ class GroupEditor(BaseDialog):
         self.topic_var.set(self.group_data.get('topic', 'greeting'))
         self.priority_var.set(self.group_data.get('priority', 'medium'))
         
+        # NEW: Load section
+        if 'section' in self.group_data:
+            self.section_var.set(self.group_data['section'])
+        
         self.followup_data = self.group_data.get('follow_ups', [])
         total_nodes = self.count_nodes(self.followup_data)
         if total_nodes > 0:
             self.followup_status.config(text=f"Follow-up tree: {total_nodes} conversation nodes")
     
     def save_group(self):
-        # Enforce group name requirement
-        group_name = self.name_var.get().strip()
-        if not group_name:
-            messagebox.showwarning("Warning", "Group name is required.")
-            self.name_entry.focus_set()
+        # Prevent multiple saves
+        if self.saving:
             return False
+            
+        self.saving = True
+        self.save_btn.config(state='disabled', text="Saving...")
+        self.window.update()
         
-        group_data = {
-            'group_name': group_name,
-            'group_description': self.desc_var.get(),
-            'questions': list(self.questions_list.get(0, tk.END)),
-            'answers': list(self.answers_list.get(0, tk.END)),
-            'topic': self.topic_var.get(),
-            'priority': self.priority_var.get(),
-            'follow_ups': self.followup_data
-        }
-        
-        if self.on_save:
-            self.on_save(group_data)
-        
-        self.clear_unsaved_changes()
-        messagebox.showinfo("Success", "Group saved successfully!")
-        return True
+        try:
+            # Enforce group name requirement
+            group_name = self.name_var.get().strip()
+            if not group_name:
+                messagebox.showwarning("Warning", "Group name is required.")
+                self.name_entry.focus_set()
+                return False
+            
+            group_data = {
+                'group_name': group_name,
+                'group_description': self.desc_var.get(),
+                'questions': list(self.questions_list.get(0, tk.END)),
+                'answers': list(self.answers_list.get(0, tk.END)),
+                'topic': self.topic_var.get(),
+                'priority': self.priority_var.get(),
+                'follow_ups': self.followup_data,
+                'section': self.section_var.get()  # NEW: Include section
+            }
+            
+            if self.on_save:
+                self.on_save(group_data)
+            
+            self.clear_unsaved_changes()
+            messagebox.showinfo("Success", "Group saved successfully!")
+            return True
+        finally:
+            self.saving = False
+            self.save_btn.config(state='normal', text="💾 Save Group")

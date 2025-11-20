@@ -1,5 +1,6 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
+import tkinter.simpledialog
 
 class BaseDialog:
     """Base class for dialogs with common functionality"""
@@ -26,6 +27,458 @@ class BaseDialog:
     
     def confirm_close(self):
         """Default close handler - can be overridden by subclasses"""
+        self.window.destroy()
+
+class SectionDeletionDialog(BaseDialog):
+    def __init__(self, parent, section_name, groups_in_section, available_sections, on_confirm=None):
+        super().__init__(parent, "Handle Groups in Section", 500, 350)
+        self.section_name = section_name
+        self.groups_in_section = groups_in_section
+        self.available_sections = [s for s in available_sections if s != section_name]
+        self.on_confirm = on_confirm
+        self.setup_ui()
+    
+    def setup_ui(self):
+        # Configure grid weights
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=1)
+        
+        # Title
+        tk.Label(
+            self.window,
+            text=f"Deleting Section: {self.section_name}",
+            font=('Arial', 16, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w', padx=20, pady=(20, 10))
+        
+        # Description
+        groups_count = len(self.groups_in_section)
+        desc_text = f"This section contains {groups_count} group(s). What would you like to do with these groups?"
+        
+        tk.Label(
+            self.window,
+            text=desc_text,
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='#b0b0d0',
+            wraplength=460,
+            justify=tk.LEFT
+        ).grid(row=1, column=0, sticky='w', padx=20, pady=(0, 15))
+        
+        # Main content frame
+        content_frame = tk.Frame(self.window, bg='#2d2d5a')
+        content_frame.grid(row=2, column=0, sticky='nsew', padx=20, pady=10)
+        content_frame.grid_columnconfigure(0, weight=1)
+        
+        # Action selection
+        self.action_var = tk.StringVar(value="move_to_uncategorized")
+        
+        # Option 1: Move to uncategorized
+        move_uncat_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        move_uncat_frame.grid(row=0, column=0, sticky='ew', pady=(0, 10))
+        
+        tk.Radiobutton(
+            move_uncat_frame,
+            text="Move groups to 'Uncategorized'",
+            variable=self.action_var,
+            value="move_to_uncategorized",
+            bg='#2d2d5a',
+            fg='white',
+            selectcolor='#2d2d5a',
+            activebackground='#2d2d5a',
+            activeforeground='white',
+            font=('Arial', 10)
+        ).pack(anchor='w')
+        
+        # Option 2: Delete groups
+        delete_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        delete_frame.grid(row=1, column=0, sticky='ew', pady=(0, 10))
+        
+        tk.Radiobutton(
+            delete_frame,
+            text="Delete all groups in this section",
+            variable=self.action_var,
+            value="delete_groups",
+            bg='#2d2d5a',
+            fg='white',
+            selectcolor='#2d2d5a',
+            activebackground='#2d2d5a',
+            activeforeground='white',
+            font=('Arial', 10)
+        ).pack(anchor='w')
+        
+        # Option 3: Move to another section
+        move_section_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        move_section_frame.grid(row=2, column=0, sticky='ew', pady=(0, 15))
+        move_section_frame.grid_columnconfigure(0, weight=1)
+        
+        tk.Radiobutton(
+            move_section_frame,
+            text="Move groups to another section:",
+            variable=self.action_var,
+            value="move_to_section",
+            bg='#2d2d5a',
+            fg='white',
+            selectcolor='#2d2d5a',
+            activebackground='#2d2d5a',
+            activeforeground='white',
+            font=('Arial', 10)
+        ).grid(row=0, column=0, sticky='w')
+        
+        self.target_section_var = tk.StringVar()
+        self.target_section_combo = ttk.Combobox(
+            move_section_frame,
+            textvariable=self.target_section_var,
+            values=self.available_sections,
+            state='readonly',
+            width=20,
+            style='Dark.TCombobox'
+        )
+        self.target_section_combo.grid(row=1, column=0, sticky='w', pady=(5, 0), padx=20)
+        
+        if self.available_sections:
+            self.target_section_var.set(self.available_sections[0])
+        
+        # Warning for delete option
+        warning_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        warning_frame.grid(row=3, column=0, sticky='ew', pady=(10, 0))
+        
+        self.warning_label = tk.Label(
+            warning_frame,
+            text="⚠️ This will permanently delete all groups in this section!",
+            font=('Arial', 9, 'bold'),
+            bg='#2d2d5a',
+            fg='#ff6b6b',
+            wraplength=460,
+            justify=tk.LEFT
+        )
+        
+        # Update warning visibility based on selection
+        def update_warning(*args):
+            if self.action_var.get() == "delete_groups":
+                self.warning_label.grid(row=0, column=0, sticky='w')
+            else:
+                self.warning_label.grid_forget()
+        
+        self.action_var.trace('w', update_warning)
+        update_warning()
+        
+        # Buttons frame
+        button_frame = tk.Frame(self.window, bg='#2d2d5a')
+        button_frame.grid(row=3, column=0, sticky='e', padx=20, pady=(0, 20))
+        
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=self.window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT, padx=(10, 0))
+        
+        tk.Button(
+            button_frame,
+            text="✅ Confirm",
+            command=self.confirm_action,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT)
+    
+    def confirm_action(self):
+        action = self.action_var.get()
+        target_section = None
+        
+        if action == "move_to_section":
+            target_section = self.target_section_var.get()
+            if not target_section:
+                messagebox.showwarning("Warning", "Please select a target section.")
+                return
+        
+        if self.on_confirm:
+            self.on_confirm(action, target_section)
+        self.window.destroy()
+
+class SectionManagerDialog(BaseDialog):
+    def __init__(self, parent, sections, qa_groups, on_save=None):
+        super().__init__(parent, "Manage Sections", 500, 400)
+        self.on_save = on_save
+        self.sections = sections.copy() if sections else []
+        self.qa_groups = qa_groups
+        self.unsaved_changes = False
+        self.original_sections = sections.copy() if sections else []
+        self.setup_ui()
+    
+    def setup_ui(self):
+        # Configure grid weights
+        self.window.grid_columnconfigure(0, weight=1)
+        self.window.grid_rowconfigure(1, weight=1)
+        
+        # Title
+        tk.Label(
+            self.window,
+            text="Manage Sections",
+            font=('Arial', 16, 'bold'),
+            bg='#2d2d5a',
+            fg='white'
+        ).grid(row=0, column=0, sticky='w', padx=20, pady=(20, 10))
+        
+        # Description
+        tk.Label(
+            self.window,
+            text="Create and manage sections to organize your QA groups",
+            font=('Arial', 10),
+            bg='#2d2d5a',
+            fg='#b0b0d0',
+            wraplength=400,
+            justify=tk.LEFT
+        ).grid(row=1, column=0, sticky='w', padx=20, pady=(0, 10))
+        
+        # Main content frame
+        content_frame = tk.Frame(self.window, bg='#2d2d5a')
+        content_frame.grid(row=2, column=0, sticky='nsew', padx=20, pady=10)
+        content_frame.grid_columnconfigure(0, weight=1)
+        content_frame.grid_rowconfigure(1, weight=1)
+        
+        # Add section frame
+        add_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        add_frame.grid(row=0, column=0, sticky='ew', pady=(0, 15))
+        add_frame.grid_columnconfigure(0, weight=1)
+        
+        self.new_section_var = tk.StringVar()
+        new_section_entry = tk.Entry(
+            add_frame,
+            textvariable=self.new_section_var,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            insertbackground='white',
+            width=30
+        )
+        new_section_entry.grid(row=0, column=0, sticky='ew', padx=(0, 10))
+        new_section_entry.bind('<Return>', lambda e: self.add_section())
+        
+        tk.Button(
+            add_frame,
+            text="+ Add Section",
+            command=self.add_section,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=15,
+            pady=5
+        ).grid(row=0, column=1)
+        
+        # Sections list
+        list_frame = tk.Frame(content_frame, bg='#2d2d5a')
+        list_frame.grid(row=1, column=0, sticky='nsew', pady=(0, 15))
+        list_frame.grid_columnconfigure(0, weight=1)
+        list_frame.grid_rowconfigure(0, weight=1)
+        
+        # Listbox with scrollbar
+        self.sections_listbox = tk.Listbox(
+            list_frame,
+            font=('Arial', 11),
+            bg='#1a1a2e',
+            fg='white',
+            selectbackground='#6c63ff',
+            activestyle='none',
+            height=8
+        )
+        self.sections_listbox.grid(row=0, column=0, sticky='nsew')
+        
+        list_scrollbar = tk.Scrollbar(
+            list_frame,
+            orient=tk.VERTICAL,
+            command=self.sections_listbox.yview,
+            bg='#2d2d5a',
+            troughcolor='#1a1a2e'
+        )
+        list_scrollbar.grid(row=0, column=1, sticky='ns')
+        self.sections_listbox.config(yscrollcommand=list_scrollbar.set)
+        
+        # Action buttons for list
+        list_actions = tk.Frame(content_frame, bg='#2d2d5a')
+        list_actions.grid(row=2, column=0, sticky='ew', pady=(0, 15))
+        list_actions.grid_columnconfigure(0, weight=1)
+        
+        tk.Button(
+            list_actions,
+            text="✏️ Rename",
+            command=self.rename_section,
+            bg='#00d4ff',
+            fg='black',
+            font=('Arial', 9, 'bold'),
+            padx=12,
+            pady=4
+        ).pack(side=tk.LEFT, padx=(0, 8))
+        
+        tk.Button(
+            list_actions,
+            text="🗑️ Delete",
+            command=self.delete_section,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 9, 'bold'),
+            padx=12,
+            pady=4
+        ).pack(side=tk.LEFT)
+        
+        # Buttons frame
+        button_frame = tk.Frame(self.window, bg='#2d2d5a')
+        button_frame.grid(row=3, column=0, sticky='e', padx=20, pady=(0, 20))
+        
+        tk.Button(
+            button_frame,
+            text="❌ Cancel",
+            command=self.confirm_close,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        ).pack(side=tk.RIGHT, padx=(10, 0))
+        
+        # Main save button that changes state
+        self.save_button = tk.Button(
+            button_frame,
+            text="💾 Save Sections",
+            command=self.save_sections,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=20,
+            pady=8
+        )
+        self.save_button.pack(side=tk.RIGHT)
+        
+        # Load existing sections
+        self.refresh_sections_list()
+    
+    def refresh_sections_list(self):
+        self.sections_listbox.delete(0, tk.END)
+        for section in self.sections:
+            groups_count = len([g for g in self.qa_groups if g.get('section') == section])
+            display_text = f"{section} ({groups_count} groups)"
+            self.sections_listbox.insert(tk.END, display_text)
+    
+    def add_section(self):
+        section_name = self.new_section_var.get().strip()
+        if not section_name:
+            messagebox.showwarning("Warning", "Please enter a section name.")
+            return
+        
+        if section_name in self.sections:
+            messagebox.showwarning("Warning", f"Section '{section_name}' already exists.")
+            return
+        
+        self.sections.append(section_name)
+        self.new_section_var.set("")
+        self.refresh_sections_list()
+        self.mark_unsaved_changes()
+    
+    def rename_section(self):
+        selection = self.sections_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a section to rename.")
+            return
+        
+        index = selection[0]
+        old_name = self.sections[index]
+        
+        new_name = tk.simpledialog.askstring(
+            "Rename Section",
+            "Enter new section name:",
+            initialvalue=old_name,
+            parent=self.window
+        )
+        
+        if new_name and new_name.strip() and new_name != old_name:
+            if new_name in self.sections:
+                messagebox.showwarning("Warning", f"Section '{new_name}' already exists.")
+                return
+            
+            self.sections[index] = new_name.strip()
+            self.refresh_sections_list()
+            self.mark_unsaved_changes()
+    
+    def delete_section(self):
+        selection = self.sections_listbox.curselection()
+        if not selection:
+            messagebox.showwarning("Warning", "Please select a section to delete.")
+            return
+        
+        index = selection[0]
+        section_name = self.sections[index]
+        groups_in_section = [g for g in self.qa_groups if g.get('section') == section_name]
+        
+        if groups_in_section:
+            # Show the section deletion dialog
+            def handle_deletion(action, target_section):
+                # Remove the section from the list
+                self.sections.pop(index)
+                self.refresh_sections_list()
+                self.mark_unsaved_changes()
+                
+                # Notify parent about the groups that need handling
+                if self.on_save:
+                    # We'll pass the section deletion info so the parent can handle the groups
+                    self.on_save(self.sections, section_name, action, target_section)
+            
+            SectionDeletionDialog(
+                self.window, 
+                section_name, 
+                groups_in_section, 
+                self.sections,
+                on_confirm=handle_deletion
+            )
+        else:
+            # No groups in section, just delete it
+            self.sections.pop(index)
+            self.refresh_sections_list()
+            self.mark_unsaved_changes()
+    
+    def mark_unsaved_changes(self):
+        """Mark that there are unsaved changes"""
+        if not self.unsaved_changes:
+            self.unsaved_changes = True
+            self.save_button.config(text="💾 Save Sections *", bg='#ffa500')
+    
+    def clear_unsaved_changes(self):
+        """Clear unsaved changes flag"""
+        self.unsaved_changes = False
+        self.save_button.config(text="💾 Save Sections", bg='#00ff88')
+    
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
+        if self.unsaved_changes:
+            result = messagebox.askyesnocancel(
+                "Unsaved Changes",
+                "You have unsaved changes to sections. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
+                "Cancel - Return to Dialog"
+            )
+            
+            if result is None:  # Cancel
+                return
+            elif result:  # Yes - Save and Close
+                self.save_sections()
+                return
+            else:  # No - Close without Saving
+                self.window.destroy()
+        else:
+            self.window.destroy()
+    
+    def save_sections(self):
+        if self.on_save:
+            self.on_save(self.sections)
+        self.clear_unsaved_changes()
         self.window.destroy()
 
 class CreateModelDialog(BaseDialog):

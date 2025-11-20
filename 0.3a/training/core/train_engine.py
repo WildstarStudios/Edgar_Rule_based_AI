@@ -39,6 +39,7 @@ class ModelManager:
             'author': author,
             'version': version,
             'created_at': datetime.datetime.now().isoformat(),
+            'sections': ["General", "Technical", "Creative"],  # Default sections
             'qa_groups': []
         }
         
@@ -57,6 +58,10 @@ class ModelManager:
         model_path = self.get_model_path(name)
         with open(model_path, 'r', encoding='utf-8') as f:
             model_data = json.load(f)
+        
+        # Ensure sections exist for backward compatibility
+        if 'sections' not in model_data:
+            model_data['sections'] = ["General", "Technical", "Creative"]
         
         self.current_model = name
         return model_data
@@ -83,7 +88,7 @@ class ModelManager:
         
         return model_data
     
-    def save_model(self, name, qa_groups):
+    def save_model(self, name, qa_groups, sections=None):
         model_path = self.get_model_path(name)
         
         if os.path.exists(model_path):
@@ -96,10 +101,13 @@ class ModelManager:
                 'author': "",
                 'version': "1.0.0",
                 'created_at': datetime.datetime.now().isoformat(),
+                'sections': ["General", "Technical", "Creative"],
                 'qa_groups': []
             }
         
         model_data['qa_groups'] = qa_groups
+        if sections is not None:
+            model_data['sections'] = sections
         model_data['updated_at'] = datetime.datetime.now().isoformat()
         
         with open(model_path, 'w', encoding='utf-8') as f:
@@ -125,6 +133,7 @@ class TrainingEngine:
         self.model_manager = None
         self.current_model = None
         self.qa_groups = []
+        self.sections = []
     
     def initialize_model_manager(self, parent):
         """Initialize model manager with parent reference"""
@@ -138,15 +147,16 @@ class TrainingEngine:
         """Load a model"""
         model_data = self.model_manager.load_model(name)
         self.qa_groups = model_data.get('qa_groups', [])
+        self.sections = model_data.get('sections', ["General", "Technical", "Creative"])
         self.current_model = name
         return model_data
     
     def save_current_model(self):
-        """Save current model with QA groups"""
+        """Save current model with QA groups and sections"""
         if not self.current_model:
             raise ValueError("No model selected")
         
-        return self.model_manager.save_model(self.current_model, self.qa_groups)
+        return self.model_manager.save_model(self.current_model, self.qa_groups, self.sections)
     
     def update_model_info(self, description="", author="", version=""):
         """Update current model information"""
@@ -154,13 +164,59 @@ class TrainingEngine:
             raise ValueError("No model selected")
         return self.model_manager.update_model_info(self.current_model, description, author, version)
     
+    def update_sections(self, new_sections):
+        """Update the sections list"""
+        self.sections = new_sections
+    
+    def get_sections(self):
+        """Get available sections"""
+        return self.sections
+    
+    def move_group_to_section(self, group_index, section_name):
+        """Move a group to a different section"""
+        if 0 <= group_index < len(self.qa_groups):
+            self.qa_groups[group_index]['section'] = section_name
+    
+    def get_groups_in_section(self, section_name):
+        """Get all groups in a specific section"""
+        return [group for group in self.qa_groups if group.get('section') == section_name]
+    
+    def handle_section_deletion(self, deleted_section, action, target_section=None):
+        """Handle deletion of a section with various options for groups in that section"""
+        groups_in_section = self.get_groups_in_section(deleted_section)
+        
+        if action == "move_to_uncategorized":
+            for group in groups_in_section:
+                group['section'] = ""
+        elif action == "delete_groups":
+            # Remove groups that are in the deleted section
+            self.qa_groups = [group for group in self.qa_groups if group.get('section') != deleted_section]
+        elif action == "move_to_section" and target_section:
+            for group in groups_in_section:
+                group['section'] = target_section
+    
+    def get_groups_by_section(self, section_filter):
+        """Get groups filtered by section"""
+        if section_filter == "All Sections":
+            return self.qa_groups
+        elif section_filter == "Uncategorized":
+            return [group for group in self.qa_groups if not group.get('section')]
+        else:
+            return [group for group in self.qa_groups if group.get('section') == section_filter]
+    
     def add_qa_group(self, group_data):
         """Add a new QA group"""
+        # Ensure section is set, default to first section if not specified
+        if 'section' not in group_data and self.sections:
+            group_data['section'] = self.sections[0]
         self.qa_groups.append(group_data)
     
     def update_qa_group(self, index, group_data):
         """Update existing QA group"""
         if 0 <= index < len(self.qa_groups):
+            # Preserve section if not specified in update
+            if 'section' not in group_data:
+                group_data['section'] = self.qa_groups[index].get('section', self.sections[0] if self.sections else "")
             self.qa_groups[index] = group_data
     
     def delete_qa_group(self, index):
@@ -172,15 +228,23 @@ class TrainingEngine:
         """Get all QA groups"""
         return self.qa_groups
     
-    def search_qa_groups(self, search_term, search_mode="both"):
-        """Enhanced search QA groups based on criteria including questions and answers"""
+    def search_qa_groups(self, search_term, search_mode="both", section_filter="All Sections"):
+        """Enhanced search QA groups based on criteria including questions, answers, and section"""
+        # First filter by section
+        if section_filter == "All Sections":
+            groups_to_search = self.qa_groups
+        elif section_filter == "Uncategorized":
+            groups_to_search = [g for g in self.qa_groups if not g.get('section')]
+        else:
+            groups_to_search = [g for g in self.qa_groups if g.get('section') == section_filter]
+        
         if not search_term:
-            return self.qa_groups
+            return groups_to_search
         
         filtered_groups = []
         search_term_lower = search_term.lower()
         
-        for group in self.qa_groups:
+        for group in groups_to_search:
             match = False
             
             if search_mode == "both":
@@ -252,15 +316,17 @@ class TrainingEngine:
             print(f"Imported 1 QA group from JSON")
         
         for i, qa in enumerate(imported_groups):
-            self.qa_groups.append({
+            group_data = {
                 'group_name': qa.get('group_name', f"Imported {i+1}"),
                 'group_description': qa.get('group_description', "Imported from JSON"),
                 'questions': qa.get('questions', []),
                 'answers': qa.get('answers', []),
                 'topic': qa.get('topic', 'general'),
                 'priority': qa.get('priority', 'medium'),
-                'follow_ups': qa.get('follow_ups', [])
-            })
+                'follow_ups': qa.get('follow_ups', []),
+                'section': qa.get('section', self.sections[0] if self.sections else "")  # Add section with default
+            }
+            self.qa_groups.append(group_data)
         
         return len(imported_groups)
     
@@ -280,8 +346,9 @@ class TrainingEngine:
         # Get the full model data
         model_data = self.model_manager.load_model(self.current_model)
         
-        # Update with current QA groups (in case there are unsaved changes)
+        # Update with current QA groups and sections (in case there are unsaved changes)
         model_data['qa_groups'] = self.qa_groups
+        model_data['sections'] = self.sections
         model_data['exported_at'] = datetime.datetime.now().isoformat()
         
         with open(filename, 'w', encoding='utf-8') as f:
@@ -310,7 +377,8 @@ class TrainingEngine:
                 'answers': group['answers'],
                 'topic': group['topic'],
                 'priority': group['priority'],
-                'follow_ups': group.get('follow_ups', [])
+                'follow_ups': group.get('follow_ups', []),
+                'section': group.get('section', '')  # Include section in export
             })
         
         with open(filename, 'w', encoding='utf-8') as f:

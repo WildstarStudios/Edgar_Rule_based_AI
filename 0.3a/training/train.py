@@ -6,7 +6,7 @@ import os
 from core.train_engine import TrainingEngine, ModelManager
 from core.group_create import GroupEditor
 from core.follow_tree import FollowUpEditor
-from core.dialogs import CreateModelDialog, EditModelDialog
+from core.dialogs import CreateModelDialog, EditModelDialog, SectionManagerDialog, SectionDeletionDialog
 
 class TrainingGUI:
     def __init__(self, root):
@@ -115,12 +115,54 @@ class TrainingGUI:
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load model: {str(e)}")
     
+    def delete_current_model(self):
+        """Delete the current model after confirmation"""
+        if not self.engine.current_model:
+            messagebox.showwarning("Warning", "No model selected.")
+            return
+        
+        model_name = self.engine.current_model
+        groups_count = len(self.engine.get_qa_groups())
+        
+        # Create confirmation message
+        message = f"Are you sure you want to delete the model '{model_name}'?"
+        if groups_count > 0:
+            message += f"\n\nThis will also delete {groups_count} QA groups."
+        
+        if messagebox.askyesno("Confirm Delete", message + "\n\nThis action cannot be undone!"):
+            try:
+                # Get next available model to switch to
+                available_models = self.engine.available_models
+                next_model = None
+                if len(available_models) > 1:
+                    next_model = available_models[1] if available_models[0] == model_name else available_models[0]
+                
+                # Delete the model
+                self.engine.model_manager.delete_model(model_name)
+                
+                # Update interface
+                self.update_model_dropdown()
+                
+                if next_model:
+                    self.load_model(next_model)
+                    messagebox.showinfo("Success", f"Model '{model_name}' deleted successfully!")
+                else:
+                    # No models left
+                    self.engine.current_model = None
+                    self.engine.qa_groups = []
+                    self.refresh_groups()
+                    messagebox.showinfo("Success", f"Model '{model_name}' deleted successfully!\n\nNo models remaining - create a new model to continue.")
+                
+            except Exception as e:
+                messagebox.showerror("Error", f"Failed to delete model: {str(e)}")
+    
     def load_model(self, model_name):
         try:
             self.engine.load_model(model_name)
             if hasattr(self, 'scroll_frame'):
                 self.refresh_groups()
             self.update_model_dropdown()
+            self.update_section_filters()
             self.clear_unsaved_changes()
         except Exception as e:
             messagebox.showerror("Error", f"Failed to load model: {str(e)}")
@@ -265,7 +307,7 @@ class TrainingGUI:
         self.model_combobox.bind('<<ComboboxSelected>>', 
                                lambda e: self.on_model_switch_request(self.model_combobox.get()))
         
-        # NEW ORDER: Save, Edit, New Model
+        # NEW ORDER: Save, Edit, New Model, Delete Model
         self.save_btn = tk.Button(
             model_frame,
             text="💾 Save",
@@ -292,6 +334,17 @@ class TrainingGUI:
             text="+ New Model",
             command=self.create_new_model,
             bg='#6c63ff',
+            fg='white',
+            font=('Arial', 9),
+            padx=10
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        # NEW: Delete Model button
+        tk.Button(
+            model_frame,
+            text="🗑️ Delete Model",
+            command=self.delete_current_model,
+            bg='#ff4d7d',
             fg='white',
             font=('Arial', 9),
             padx=10
@@ -376,6 +429,26 @@ class TrainingGUI:
         )
         search_filter.pack(side=tk.LEFT, padx=(0, 15))
         
+        # NEW: Section filter dropdown
+        tk.Label(
+            search_frame,
+            text="Section:",
+            bg='#1a1a2e',
+            fg='white',
+            font=('Arial', 9)
+        ).pack(side=tk.LEFT, padx=(0, 5))
+        
+        self.section_filter = tk.StringVar(value="All Sections")
+        self.section_combo = ttk.Combobox(
+            search_frame,
+            textvariable=self.section_filter,
+            state="readonly",
+            width=15,
+            style='Dark.TCombobox'
+        )
+        self.section_combo.pack(side=tk.LEFT, padx=(0, 15))
+        self.section_combo.bind('<<ComboboxSelected>>', lambda e: self.on_section_filter())
+        
         # Bind search events for real-time filtering
         self.search_var.trace('w', self.on_search)
         self.search_mode.trace('w', self.on_search)
@@ -383,6 +456,17 @@ class TrainingGUI:
         # Action buttons
         actions = tk.Frame(toolbar, bg='#1a1a2e')
         actions.grid(row=0, column=1, sticky='e')
+        
+        # NEW: Manage Sections button
+        tk.Button(
+            actions,
+            text="📁 Manage Sections",
+            command=self.manage_sections,
+            bg='#a78bfa',
+            fg='white',
+            font=('Arial', 9),
+            padx=12
+        ).pack(side=tk.LEFT, padx=(0, 8))
         
         tk.Button(
             actions,
@@ -474,21 +558,57 @@ class TrainingGUI:
     def on_mousewheel(self, event):
         self.canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
     
+    def manage_sections(self):
+        """Open section management dialog"""
+        if not self.engine.current_model:
+            messagebox.showwarning("Warning", "Please create or select a model first.")
+            return
+        
+        def on_save(sections):
+            self.engine.update_sections(sections)
+            if self.save_current_model():
+                self.update_section_filters()
+                self.refresh_groups()
+            else:
+                self.mark_unsaved_changes()
+        
+        SectionManagerDialog(self.root, self.engine.get_sections(), self.engine.get_qa_groups(), on_save)
+    
+    def update_section_filters(self):
+        """Update the section filter dropdown with current sections"""
+        sections = self.engine.get_sections()
+        section_values = ["All Sections", "Uncategorized"] + sections
+        self.section_combo['values'] = section_values
+        
+        # Also update any open group editor dialogs
+        self.update_open_editors()
+    
+    def update_open_editors(self):
+        """Update section combobox in any open group editors"""
+        # This would need to be implemented if you want to update open dialogs
+        # For now, we'll just refresh the main interface
+        pass
+    
+    def on_section_filter(self):
+        """Handle section filter change"""
+        self.on_search()
+    
     def on_search(self, *args):
-        """Optimized real-time search with caching"""
+        """Optimized real-time search with caching and section filtering"""
         search_term = self.search_var.get().lower()
         search_mode = self.search_mode.get().lower()
+        section_filter = self.section_filter.get()
         
         # Use cache if search hasn't changed
-        cache_key = f"{search_term}|{search_mode}"
+        cache_key = f"{search_term}|{search_mode}|{section_filter}"
         if cache_key in self.search_cache:
             filtered_groups = self.search_cache[cache_key]
         else:
-            # Perform search
+            # Perform search with section filter
             if search_mode == "all":
-                filtered_groups = self.engine.search_qa_groups(search_term, "both")
+                filtered_groups = self.engine.search_qa_groups(search_term, "both", section_filter)
             else:
-                filtered_groups = self.engine.search_qa_groups(search_term, search_mode)
+                filtered_groups = self.engine.search_qa_groups(search_term, search_mode, section_filter)
             
             # Cache results
             self.search_cache[cache_key] = filtered_groups
@@ -597,23 +717,24 @@ class TrainingGUI:
         
         search_term = self.search_var.get().lower()
         search_mode = self.search_mode.get().lower()
+        section_filter = self.section_filter.get()
         
         if search_mode == "all":
-            filtered_groups = self.engine.search_qa_groups(search_term, "both")
+            filtered_groups = self.engine.search_qa_groups(search_term, "both", section_filter)
         else:
-            filtered_groups = self.engine.search_qa_groups(search_term, search_mode)
+            filtered_groups = self.engine.search_qa_groups(search_term, search_mode, section_filter)
         
         self.display_filtered_groups(filtered_groups)
     
     def create_group_card(self, group):
-        """Create a modern group card widget with improved layout"""
+        """Create a modern group card widget with improved layout including section"""
         card = tk.Frame(
             self.groups_container, 
             bg='#252547', 
             relief='raised', 
             bd=1,
             width=self.min_card_width,
-            height=140
+            height=160  # Slightly taller to accommodate section
         )
         card.pack_propagate(False)
         
@@ -621,27 +742,47 @@ class TrainingGUI:
         content = tk.Frame(card, bg='#252547')
         content.pack(fill='both', expand=True, padx=12, pady=12)
         
-        # Header with title and badge
+        # Header with priority and section
         header = tk.Frame(content, bg='#252547')
         header.pack(fill='x', pady=(0, 8))
         
-        # Topic badge
+        # Topic badge (left side)
         topic = group.get('topic', 'general')
         topic_color = self.get_topic_color(topic)
         topic_badge = tk.Label(
             header,
             text=topic.upper(),
-            font=('Arial', 8, 'bold'),
+            font=('Arial', 7, 'bold'),
             bg=topic_color,
             fg='white',
-            padx=6,
-            pady=2,
+            padx=4,
+            pady=1,
             relief='raised',
             bd=1
         )
         topic_badge.pack(side='left')
         
-        # Priority indicator
+        # Spacer to push section and priority to right
+        tk.Frame(header, bg='#252547').pack(side='left', expand=True)
+        
+        # Section badge (right side, before priority)
+        section = group.get('section', '')
+        if section:
+            section_color = self.get_section_color(section)
+            section_badge = tk.Label(
+                header,
+                text=section[:12] + "..." if len(section) > 12 else section,
+                font=('Arial', 7, 'bold'),
+                bg=section_color,
+                fg='white',
+                padx=4,
+                pady=1,
+                relief='raised',
+                bd=1
+            )
+            section_badge.pack(side='right', padx=(0, 5))
+        
+        # Priority indicator (far right)
         priority = group.get('priority', 'medium')
         priority_color = self.get_priority_color(priority)
         priority_dot = tk.Label(
@@ -651,7 +792,7 @@ class TrainingGUI:
             bg='#252547',
             fg=priority_color
         )
-        priority_dot.pack(side='right', padx=(5, 0))
+        priority_dot.pack(side='right')
         
         # Group name (centered and prominent)
         group_name = group['group_name']
@@ -717,18 +858,33 @@ class TrainingGUI:
         # Store group reference for callbacks
         group_ref = group
         
+        # Button order: Edit, Move, Delete (with Move in the middle)
         edit_btn = tk.Button(
             actions,
             text="✏️ Edit",
             command=lambda: self.edit_group(self.engine.get_qa_groups().index(group_ref)),
             bg='#6c63ff',
             fg='white',
-            font=('Arial', 9, 'bold'),
-            padx=12,
-            pady=3,
-            width=8
+            font=('Arial', 8, 'bold'),
+            padx=8,
+            pady=2,
+            width=6
         )
-        edit_btn.pack(side='left', expand=True)
+        edit_btn.pack(side=tk.LEFT, expand=True)
+        
+        # Move button in the middle
+        move_btn = tk.Button(
+            actions,
+            text="📂 Move",
+            command=lambda: self.move_group(self.engine.get_qa_groups().index(group_ref)),
+            bg='#a78bfa',
+            fg='white',
+            font=('Arial', 8, 'bold'),
+            padx=8,
+            pady=2,
+            width=6
+        )
+        move_btn.pack(side=tk.LEFT, expand=True)
         
         delete_btn = tk.Button(
             actions,
@@ -736,14 +892,28 @@ class TrainingGUI:
             command=lambda: self.delete_group(self.engine.get_qa_groups().index(group_ref)),
             bg='#ff4d7d',
             fg='white',
-            font=('Arial', 9, 'bold'),
-            padx=12,
-            pady=3,
-            width=8
+            font=('Arial', 8, 'bold'),
+            padx=8,
+            pady=2,
+            width=6
         )
-        delete_btn.pack(side='right', expand=True)
+        delete_btn.pack(side=tk.RIGHT, expand=True)
         
         return card
+    
+    def get_section_color(self, section):
+        """Return color for section badge"""
+        # Generate consistent color based on section name
+        import hashlib
+        hash_obj = hashlib.md5(section.encode())
+        hash_int = int(hash_obj.hexdigest()[:8], 16)
+        
+        colors = [
+            '#00d4ff', '#6c63ff', '#ff6b9d', '#00ff88', '#ffd166',
+            '#a78bfa', '#94a3b8', '#f97316', '#10b981', '#8b5cf6'
+        ]
+        
+        return colors[hash_int % len(colors)]
     
     def get_topic_color(self, topic):
         """Return color for topic badge"""
@@ -779,7 +949,9 @@ class TrainingGUI:
             else:
                 self.mark_unsaved_changes()
         
-        GroupEditor(self.root, on_save=on_save)
+        editor = GroupEditor(self.root, on_save=on_save)
+        # Update the section combobox in the editor
+        self.update_editor_sections(editor)
     
     def edit_group(self, index):
         if not self.engine.current_model:
@@ -793,7 +965,98 @@ class TrainingGUI:
             else:
                 self.mark_unsaved_changes()
         
-        GroupEditor(self.root, self.engine.get_qa_groups()[index], on_save)
+        editor = GroupEditor(self.root, self.engine.get_qa_groups()[index], on_save)
+        # Update the section combobox in the editor
+        self.update_editor_sections(editor)
+    
+    def update_editor_sections(self, editor):
+        """Update the section combobox in a group editor"""
+        sections = self.engine.get_sections()
+        if hasattr(editor, 'section_combo') and sections:
+            editor.section_combo['values'] = sections
+            # Set default section if not already set
+            if not editor.section_var.get() and sections:
+                editor.section_var.set(sections[0])
+    
+    def move_group(self, index):
+        """Move group to different section"""
+        if not self.engine.current_model:
+            messagebox.showwarning("Warning", "Please create or select a model first.")
+            return
+        
+        group = self.engine.get_qa_groups()[index]
+        current_section = group.get('section', '')
+        sections = self.engine.get_sections()
+        
+        if not sections:
+            messagebox.showwarning("Warning", "No sections available. Please create sections first.")
+            return
+        
+        # Create simple dialog for section selection
+        move_window = tk.Toplevel(self.root)
+        move_window.title("Move Group to Section")
+        move_window.geometry("300x150")
+        move_window.configure(bg='#2d2d5a')
+        move_window.transient(self.root)
+        move_window.grab_set()
+        
+        # Center the window
+        move_window.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (move_window.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (move_window.winfo_height() // 2)
+        move_window.geometry(f"+{x}+{y}")
+        
+        tk.Label(
+            move_window,
+            text=f"Move '{group['group_name']}' to section:",
+            font=('Arial', 11, 'bold'),
+            bg='#2d2d5a',
+            fg='white',
+            wraplength=280
+        ).pack(pady=15)
+        
+        section_var = tk.StringVar(value=current_section if current_section else sections[0])
+        section_combo = ttk.Combobox(
+            move_window,
+            textvariable=section_var,
+            values=sections,
+            state='readonly',
+            width=20,
+            style='Dark.TCombobox'
+        )
+        section_combo.pack(pady=10)
+        
+        def do_move():
+            new_section = section_var.get()
+            self.engine.move_group_to_section(index, new_section)
+            if self.save_current_model():
+                self.refresh_groups()
+                move_window.destroy()
+            else:
+                self.mark_unsaved_changes()
+        
+        button_frame = tk.Frame(move_window, bg='#2d2d5a')
+        button_frame.pack(pady=10)
+        
+        tk.Button(
+            button_frame,
+            text="Move",
+            command=do_move,
+            bg='#00ff88',
+            fg='black',
+            font=('Arial', 10, 'bold'),
+            padx=15
+        ).pack(side=tk.LEFT, padx=(0, 10))
+        
+        tk.Button(
+            button_frame,
+            text="Cancel",
+            command=move_window.destroy,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 10),
+            padx=15
+        ).pack(side=tk.LEFT)
     
     def delete_group(self, index):
         if not self.engine.current_model:
