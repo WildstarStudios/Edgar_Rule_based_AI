@@ -69,7 +69,10 @@ class AdvancedChatbot:
             'tree_exits': 0,
             'confidence_rejections': 0,
             'word_variants_applied': 0,
-            'fuzzy_variants_applied': 0
+            'fuzzy_variants_applied': 0,
+            'root_switches': 0,
+            'branch_repeats': 0,
+            'direct_question_repeats': 0
         }
         
         # Load available models and select one
@@ -118,6 +121,9 @@ class AdvancedChatbot:
             'tree_start_time': None,       # When tree was entered
             'tree_messages': 0,            # Messages in current tree session
             'tree_inactivity_count': 0,    # Messages since last tree activity
+            'last_branch_questions': [],   # Store questions from last branch for repeating
+            'can_repeat_branch': False,    # Flag to allow repeating current branch
+            'repeatable_branches': [],     # NEW: Store entire branches for direct question matching
         }
     
     def load_configuration(self) -> configparser.ConfigParser:
@@ -223,7 +229,7 @@ class AdvancedChatbot:
                 print("❌ Please enter a valid number")
     
     def load_model_data(self):
-        """Load data from the selected model"""
+        """Load data from the selected model - NEW JSON STRUCTURE ONLY"""
         if not self.current_model:
             print("❌ No model selected")
             return False
@@ -233,9 +239,15 @@ class AdvancedChatbot:
             with open(model_path, 'r', encoding='utf-8') as f:
                 model_data = json.load(f)
             
-            self.qa_groups = model_data.get('qa_groups', [])
-            print(f"✅ Loaded {len(self.qa_groups)} QA groups from '{self.current_model}'")
-            return True
+            # NEW STRUCTURE ONLY - with sections
+            if 'qa_groups' in model_data:
+                self.qa_groups = model_data.get('qa_groups', [])
+                print(f"✅ Loaded {len(self.qa_groups)} QA groups from '{self.current_model}' (new format)")
+                return True
+            else:
+                print(f"❌ Invalid model format in {model_path} - expected new JSON structure with 'qa_groups'")
+                self.qa_groups = []
+                return False
             
         except FileNotFoundError:
             print(f"❌ Model file not found: {model_path}")
@@ -360,6 +372,9 @@ class AdvancedChatbot:
         self.conversation_context['tree_start_time'] = time.time()
         self.conversation_context['tree_messages'] = 0
         self.conversation_context['tree_inactivity_count'] = 0
+        self.conversation_context['last_branch_questions'] = []
+        self.conversation_context['can_repeat_branch'] = False
+        self.conversation_context['repeatable_branches'] = []  # Reset repeatable branches
         
         self.performance_stats['tree_entries'] += 1
         print(f"🌳 Entered tree: {group.get('group_name', 'Unknown')}")
@@ -372,6 +387,9 @@ class AdvancedChatbot:
             self.conversation_context['current_branch'] = None
             self.conversation_context['branch_path'] = []
             self.conversation_context['available_branches'] = []
+            self.conversation_context['last_branch_questions'] = []
+            self.conversation_context['can_repeat_branch'] = False
+            self.conversation_context['repeatable_branches'] = []
             self.performance_stats['tree_exits'] += 1
             print(f"🌳 Exited tree: {tree_name}")
     
@@ -379,6 +397,12 @@ class AdvancedChatbot:
         """Navigate to a specific branch in the tree - UPDATED FOR NEW JSON FORMAT"""
         if not self.is_in_tree():
             return
+        
+        # Store the previous branch for repeating capability
+        if self.conversation_context['current_branch']:
+            # Add current branch to repeatable branches before moving
+            if self.conversation_context['current_branch'] not in self.conversation_context['repeatable_branches']:
+                self.conversation_context['repeatable_branches'].append(self.conversation_context['current_branch'])
         
         # Add current branch to path if it exists
         if self.conversation_context['current_branch']:
@@ -389,6 +413,10 @@ class AdvancedChatbot:
         self.conversation_context['available_branches'] = branch.get('children', [])
         self.conversation_context['tree_messages'] += 1
         self.conversation_context['tree_inactivity_count'] = 0  # Reset inactivity
+        
+        # Enable branch repeating if this branch has children
+        self.conversation_context['can_repeat_branch'] = len(branch.get('children', [])) > 0
+        
         self.performance_stats['tree_navigations'] += 1
     
     def navigate_back(self) -> bool:
@@ -405,6 +433,9 @@ class AdvancedChatbot:
             self.conversation_context['available_branches'] = self.conversation_context['active_tree']['follow_ups']
         else:
             self.conversation_context['available_branches'] = previous_branch.get('children', [])
+        
+        # Enable branch repeating if we have children
+        self.conversation_context['can_repeat_branch'] = len(self.conversation_context['available_branches']) > 0
         
         self.conversation_context['tree_messages'] += 1
         self.conversation_context['tree_inactivity_count'] = 0  # Reset inactivity
@@ -457,8 +488,37 @@ class AdvancedChatbot:
         
         return None
     
+    def find_repeatable_branch_match(self, user_input: str) -> Optional[Tuple[dict, float]]:
+        """NEW: Find matches in repeatable branches (previous branches that can be repeated)"""
+        if not self.conversation_context['repeatable_branches']:
+            return None
+        
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
+        best_match = None
+        best_score = 0.0
+        
+        for branch in self.conversation_context['repeatable_branches']:
+            branch_questions = branch.get('questions', [])
+            
+            for branch_question in branch_questions:
+                if not branch_question:
+                    continue
+                
+                branch_normalized = self._normalize_with_variants(branch_question.lower().strip())
+                similarity = fuzz.token_set_ratio(user_normalized, branch_normalized) / 100.0
+                
+                if similarity > best_score and similarity >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['medium_confidence']:
+                    best_score = similarity
+                    best_match = branch
+        
+        if best_match:
+            print(f"🔁 Repeatable branch match found: {best_match.get('branch_name', 'Unknown')} (score: {best_score:.2f})")
+            return best_match, best_score
+        
+        return None
+    
     def handle_tree_navigation_commands(self, user_input: str) -> Optional[str]:
-        """Handle natural language tree navigation commands"""
+        """Handle natural language tree navigation commands with enhanced repeating support"""
         # ENHANCEMENT: Use normalized input for command matching
         user_normalized = self._normalize_with_variants(user_input.lower().strip())
         
@@ -496,6 +556,21 @@ class AdvancedChatbot:
             if re.search(pattern, user_normalized):
                 return self.get_available_branches_text()
         
+        # Repeat branch patterns - allow repeating current branch questions
+        repeat_patterns = [
+            r'repeat',
+            r'again',
+            r'say that again',
+            r'what were the questions',
+            r'what were my options',
+            r'what could i ask'
+        ]
+        
+        for pattern in repeat_patterns:
+            if re.search(pattern, user_normalized) and self.conversation_context['can_repeat_branch']:
+                self.performance_stats['branch_repeats'] += 1
+                return self.get_current_branch_questions_text()
+        
         return None
     
     def get_available_branches_text(self) -> str:
@@ -510,21 +585,76 @@ class AdvancedChatbot:
         
         return f"Available options: {', '.join(branch_names)}"
     
+    def get_current_branch_questions_text(self) -> str:
+        """Get text showing current branch questions for repeating"""
+        if not self.conversation_context['current_branch']:
+            return "No current branch to repeat."
+        
+        current_branch = self.conversation_context['current_branch']
+        questions = current_branch.get('questions', [])
+        
+        if not questions:
+            return "No questions available for this branch."
+        
+        questions_text = "You can ask: " + ", ".join([f"'{q}'" for q in questions])
+        
+        # Add instruction for repeating
+        if self.conversation_context['can_repeat_branch']:
+            questions_text += " (You can ask these again anytime by saying 'repeat' or 'again')"
+        
+        return questions_text
+    
+    def get_repeatable_branches_text(self) -> str:
+        """NEW: Get text describing all repeatable branches and their questions"""
+        if not self.conversation_context['repeatable_branches']:
+            return "No previous branches available to repeat."
+        
+        branches_text = []
+        for i, branch in enumerate(self.conversation_context['repeatable_branches'], 1):
+            branch_name = branch.get('branch_name', f"Branch {i}")
+            questions = branch.get('questions', [])
+            if questions:
+                questions_sample = ", ".join([f"'{q}'" for q in questions[:2]])  # Show first 2 questions
+                if len(questions) > 2:
+                    questions_sample += f" and {len(questions) - 2} more"
+                branches_text.append(f"{branch_name}: {questions_sample}")
+        
+        return "Previous branches you can ask about: " + "; ".join(branches_text)
+    
     def should_exit_tree_due_to_inactivity(self) -> bool:
-        """Check if we should exit tree due to inactivity"""
+        """Check if we should exit tree due to inactivity - ENHANCED FOR BRANCH REPEATING"""
         if not self.is_in_tree():
             return False
         
-        # Exit tree after 5 messages of inactivity
+        # If we're at the end of a branch (no children) and user doesn't engage with repeatable branches
+        # after 1 message, exit cleanly
+        if (not self.conversation_context['available_branches'] and 
+            self.conversation_context['tree_inactivity_count'] >= 1 and
+            not self.is_user_engaging_with_repeatable_branches(self.conversation_context['last_user_input'])):
+            return True
+        
+        # Exit tree after 5 messages of general inactivity
         if self.conversation_context['tree_inactivity_count'] >= 5:
             return True
         
         return False
     
+    def is_user_engaging_with_repeatable_branches(self, user_input: str) -> bool:
+        """NEW: Check if user is trying to engage with repeatable branches"""
+        if not user_input or not self.conversation_context['repeatable_branches']:
+            return False
+        
+        # Check if user input matches any repeatable branch questions
+        repeat_match = self.find_repeatable_branch_match(user_input)
+        return repeat_match is not None
+    
     def handle_tree_context_decay(self, user_input: str, current_tree_match: bool):
-        """Handle tree context decay - exit tree if user clearly changes topic"""
+        """Handle tree context decay - exit tree if user clearly changes topic - ENHANCED FOR ROOT SWITCHING"""
         if not self.is_in_tree():
             return
+        
+        # Store last user input for branch repeating detection
+        self.conversation_context['last_user_input'] = user_input
         
         if current_tree_match:
             # Reset inactivity counter when user engages with tree
@@ -533,7 +663,7 @@ class AdvancedChatbot:
             # Increment inactivity counter
             self.conversation_context['tree_inactivity_count'] += 1
             
-            # Check if user is clearly changing topic
+            # Check if user is clearly changing topic or switching roots
             user_normalized = self._normalize_with_variants(user_input.lower().strip())
             
             # Explicit exit patterns
@@ -553,9 +683,43 @@ class AdvancedChatbot:
                     self.exit_tree()
                     return
             
-            # Check if this is a completely different root topic
-            if self.is_clear_topic_switch(user_input):
-                self.conversation_context['tree_inactivity_count'] += 2  # Penalize more for topic switches
+            # Check if this is a strong root match (user wants to switch roots)
+            strong_root_match = self.find_strong_root_match(user_input)
+            if strong_root_match:
+                group, confidence, match_type = strong_root_match
+                print(f"🌳 Root switch detected: {group.get('group_name')} (confidence: {confidence:.2f})")
+                self.performance_stats['root_switches'] += 1
+                self.exit_tree()  # Exit current tree
+                self.enter_tree(group)  # Enter new tree
+                return
+    
+    def find_strong_root_match(self, user_input: str) -> Optional[Tuple[dict, float, str]]:
+        """Find strong root matches for switching trees even when deep in branches"""
+        user_normalized = self._normalize_with_variants(user_input.lower().strip())
+        best_match = None
+        best_score = 0.0
+        
+        for group in self.qa_groups:
+            # Skip the current active tree to prevent self-matching
+            if (self.is_in_tree() and 
+                self.conversation_context['active_tree'].get('group_name') == group.get('group_name')):
+                continue
+                
+            for question in group.get('questions', []):
+                question_normalized = self._normalize_with_variants(question.lower())
+                similarity = fuzz.token_set_ratio(user_normalized, question_normalized) / 100.0
+                
+                # Require higher confidence for root switching
+                if (similarity > best_score and 
+                    similarity >= self.MATCHING_CONFIG['SIMILARITY_THRESHOLDS']['high_confidence']):
+                    best_score = similarity
+                    best_match = group
+        
+        if best_match:
+            match_type = "root_switch"
+            return best_match, best_score, match_type
+        
+        return None
     
     def is_clear_topic_switch(self, user_input: str) -> bool:
         """Check if user input is clearly switching to a different root topic"""
@@ -718,6 +882,30 @@ class AdvancedChatbot:
                     responses.append((question, nav_response, 0.9, [], "Tree Navigation", "navigation"))
                     self.update_conversation_context(question, nav_response, None, 0.9)
                     tree_match_occurred = True
+                
+                # NEW: Check for repeatable branch matches (user asking previous branch questions directly)
+                if not tree_match_occurred and self.conversation_context['repeatable_branches']:
+                    repeat_match = self.find_repeatable_branch_match(question)
+                    if repeat_match:
+                        branch, confidence = repeat_match
+                        tree_match_occurred = True
+                        
+                        # Check confidence requirement
+                        if self.answer_confidence_requirement > 0 and confidence < self.answer_confidence_requirement:
+                            self.performance_stats['confidence_rejections'] += 1
+                            unknown_response = self.handle_unknown_question(question)
+                            responses.append((question, unknown_response, 0.0, [], None, "confidence_rejection"))
+                            self.update_conversation_context(question, unknown_response, None, 0.0)
+                        else:
+                            # Navigate to this repeatable branch
+                            self.navigate_to_branch(branch)
+                            answer = self.get_random_answer(branch.get('answers', []))
+                            responses.append((question, answer, confidence, [], 
+                                            self.conversation_context['active_tree'].get('group_name', 'Unknown'), 
+                                            "tree_branch_repeat"))
+                            self.update_conversation_context(question, answer, 
+                                                           self.conversation_context['active_tree'], confidence)
+                            self.performance_stats['direct_question_repeats'] += 1
                 
                 # Try to match available branches
                 if not tree_match_occurred:
@@ -892,6 +1080,15 @@ class AdvancedChatbot:
             inactivity = self.conversation_context['tree_inactivity_count']
             if inactivity > 0:
                 summary.append(f"({5 - inactivity} messages until topic reset)")
+            
+            # Show branch repeating availability
+            if self.conversation_context['can_repeat_branch']:
+                summary.append("🔄 Repeat available")
+            
+            # Show repeatable branches count
+            repeatable_count = len(self.conversation_context['repeatable_branches'])
+            if repeatable_count > 0:
+                summary.append(f"📚 {repeatable_count} previous branches")
         
         return " | ".join(summary) if summary else "Minimal context"
     
@@ -913,6 +1110,9 @@ class AdvancedChatbot:
         print(f"   Confidence rejections: {self.performance_stats['confidence_rejections']}")
         print(f"   Word variants applied: {self.performance_stats['word_variants_applied']}")
         print(f"   Fuzzy variants applied: {self.performance_stats['fuzzy_variants_applied']}")
+        print(f"   Root switches: {self.performance_stats['root_switches']}")
+        print(f"   Branch repeats: {self.performance_stats['branch_repeats']}")
+        print(f"   Direct question repeats: {self.performance_stats['direct_question_repeats']}")
         print(f"   Groups in model: {len(self.qa_groups)}")
         print(f"   Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
         print(f"   Word variant sets: {len(self.word_variants)}")
@@ -931,6 +1131,9 @@ class AdvancedChatbot:
         print(f"✨ Answer confidence requirement: {self.answer_confidence_requirement:.2f} ({'enabled' if self.answer_confidence_requirement > 0 else 'disabled'})")
         print("✨ NEW: Natural tree navigation - say 'go back', 'what are my options', etc.")
         print("✨ NEW: Smart context decay - trees auto-exit after 5 inactive messages")
+        print("✨ NEW: Root switching - always switch to new roots even when deep in branches")
+        print("✨ NEW: Branch repeating - say 'repeat' or 'again' to hear previous questions")
+        print("✨ NEW: Direct question repeating - ask the actual questions from previous branches directly!")
         print(f"✨ NEW: Word variants system - {len(self.word_variants)} variant sets loaded")
         print("-" * 60)
         
@@ -970,6 +1173,11 @@ class AdvancedChatbot:
                     print("🔄 Conversation context reset!")
                     continue
                 
+                elif user_input.lower() == 'previous branches' and self.is_in_tree():
+                    # NEW: Show all repeatable branches
+                    print(self.get_repeatable_branches_text())
+                    continue
+                
                 responses = self.process_multiple_questions(user_input)
                 self.display_responses(responses)
                 
@@ -1005,7 +1213,9 @@ class AdvancedChatbot:
                         "semantic": "🧠 Semantic match",
                         "follow_up": "🔄 Follow-up",
                         "tree_branch": "🌳 Tree branch",
+                        "tree_branch_repeat": "🔁 Repeated branch",  # NEW
                         "navigation": "🧭 Navigation",
+                        "root_switch": "🔄 Root switch",
                         "unknown": "❓ Unknown"
                     }
                     display_type = match_type_display.get(match_type, match_type)

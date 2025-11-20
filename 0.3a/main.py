@@ -89,6 +89,9 @@ class DarkChatbotGUI:
         self.current_streaming_text = ""
         self.is_streaming = False
         
+        # Verbose mode setting
+        self.verbose_mode = self.config.getboolean('gui', 'verbose_mode', fallback=False)
+        
         self.setup_gui()
     
     # ===== STREAMING LAYER CALLBACKS =====
@@ -99,7 +102,8 @@ class DarkChatbotGUI:
     
     def _handle_thinking(self, text: str):
         """Handle thinking indicators from the layer"""
-        self.add_message("thinking", text)
+        if self.verbose_mode:
+            self.add_message("thinking", text)
     
     def _handle_response_complete(self):
         """Handle response completion from the layer"""
@@ -124,7 +128,8 @@ class DarkChatbotGUI:
                 'theme': 'dark',
                 'window_width': '1000',
                 'window_height': '700',
-                'streaming_enabled': 'True'
+                'streaming_enabled': 'True',
+                'verbose_mode': 'False'  # Default to minimal info
             }
         }
         
@@ -578,7 +583,6 @@ How can I assist you today?"""
             self.chat_display.insert(tk.END, f"[{timestamp}] ", 'user_timestamp')
             self.chat_display.insert(tk.END, "You: ", 'user_header')
             self.chat_display.insert(tk.END, f"{message}\n", 'user_msg')
-            self.chat_display.insert(tk.END, "─" * 60 + "\n", 'separator')
             
         elif sender == "bot":
             # Bot message - LEFT ALIGNED  
@@ -587,7 +591,6 @@ How can I assist you today?"""
             self.chat_display.insert(tk.END, f"[{timestamp}] ", 'bot_timestamp')
             self.chat_display.insert(tk.END, f"{current_model}: ", 'bot_header')
             self.chat_display.insert(tk.END, f"{message}\n", 'bot_msg')
-            self.chat_display.insert(tk.END, "─" * 60 + "\n", 'separator')
             
         elif sender == "system":
             self.chat_display.insert(tk.END, f"\n{message}\n", 'system')
@@ -627,16 +630,18 @@ How can I assist you today?"""
     
     def process_message(self, user_text):
         try:
-            # Show thinking indicator
-            self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
+            # Show thinking indicator only in verbose mode
+            if self.verbose_mode:
+                self.root.after(0, lambda: self.add_message("thinking", "🤔 Processing your request..."))
             
             # Process the message using the streaming layer
             responses = self.streaming_layer.process_message(user_text)
             
-            # Clear thinking indicator
-            self.chat_display.config(state=tk.NORMAL)
-            self.chat_display.delete("end-2l", "end-1l")
-            self.chat_display.config(state=tk.DISABLED)
+            # Clear thinking indicator if shown
+            if self.verbose_mode:
+                self.chat_display.config(state=tk.NORMAL)
+                self.chat_display.delete("end-2l", "end-1l")
+                self.chat_display.config(state=tk.DISABLED)
             
             # Check if we got any responses
             if not responses:
@@ -654,14 +659,14 @@ How can I assist you today?"""
     def display_responses_with_streaming(self, responses):
         """Display responses using the streaming layer"""
         def show_additional_info_and_continue(current_index):
-            """Show context after streaming completes"""
-            # Show context summary if available
-            context_summary = self.streaming_layer.get_context_summary()
-            if context_summary and context_summary != "Minimal context":
-                self.add_message("context", context_summary)
+            """Show context after streaming completes (only in verbose mode)"""
+            # Show context summary if available and in verbose mode
+            if self.verbose_mode:
+                context_summary = self.streaming_layer.get_context_summary()
+                if context_summary and context_summary != "Minimal context":
+                    self.add_message("context", context_summary)
             
-            # Add separator and move to next response
-            self.add_message("system", "─" * 60)
+            # Move to next response
             self.root.after(100, lambda: stream_next_response(current_index + 1))
         
         def stream_next_response(index=0):
@@ -678,14 +683,14 @@ How can I assist you today?"""
                 # AI Engine format: (original_question, answer, confidence, corrections, matched_group, match_type)
                 original_question, answer, confidence, corrections, matched_group, match_type = response
                 
-                # Show corrections if any
-                if corrections:
+                # Show corrections if any and in verbose mode
+                if self.verbose_mode and corrections:
                     best_correction, best_score = corrections[0]
                     correction_text = f"Auto-corrected to: '{best_correction}' (confidence: {best_score}%)"
                     self.add_message("correction", correction_text)
                     
-                # Show match information for AI engine responses
-                if matched_group and confidence > 0 and match_type != "follow_up":
+                # Show match information for AI engine responses (only in verbose mode)
+                if self.verbose_mode and matched_group and confidence > 0 and match_type != "follow_up":
                     match_type_display = {
                         "exact": "🎯 Exact match",
                         "high_confidence": "✅ High confidence", 
@@ -702,8 +707,9 @@ How can I assist you today?"""
                 # Module routing format: (answer, confidence, source)
                 answer, confidence, source = response
                 
-                # Show module routing info
-                self.add_message("match_info", f"🔄: {source} (confidence: {confidence:.2f})")
+                # Show module routing info (only in verbose mode)
+                if self.verbose_mode:
+                    self.add_message("match_info", f"🔄: {source} (confidence: {confidence:.2f})")
                 
             else:
                 # Unknown format, try to handle gracefully
@@ -828,6 +834,7 @@ AI Engine:
 GUI:
 • Window Size: {self.config.get('gui', 'window_width')}x{self.config.get('gui', 'window_height')}
 • Theme: {self.config.get('gui', 'theme')}
+• Verbose Mode: {'Enabled' if self.verbose_mode else 'Disabled'}
 
 All settings are stored in config.cfg"""
         

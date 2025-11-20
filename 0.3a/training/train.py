@@ -135,7 +135,11 @@ class TrainingGUI:
                 available_models = self.engine.available_models
                 next_model = None
                 if len(available_models) > 1:
-                    next_model = available_models[1] if available_models[0] == model_name else available_models[0]
+                    # Find the next model that isn't the one being deleted
+                    for model in available_models:
+                        if model != model_name:
+                            next_model = model
+                            break
                 
                 # Delete the model
                 self.engine.model_manager.delete_model(model_name)
@@ -147,11 +151,19 @@ class TrainingGUI:
                     self.load_model(next_model)
                     messagebox.showinfo("Success", f"Model '{model_name}' deleted successfully!")
                 else:
-                    # No models left
+                    # No models left - clear everything and prompt for new model
                     self.engine.current_model = None
                     self.engine.qa_groups = []
                     self.refresh_groups()
+                    
+                    # Clear the model combobox text
+                    if hasattr(self, 'model_combobox'):
+                        self.model_combobox.set('')
+                    
                     messagebox.showinfo("Success", f"Model '{model_name}' deleted successfully!\n\nNo models remaining - create a new model to continue.")
+                    
+                    # Prompt to create a new model
+                    self.root.after(100, self.prompt_create_first_model)
                 
             except Exception as e:
                 messagebox.showerror("Error", f"Failed to delete model: {str(e)}")
@@ -220,7 +232,11 @@ class TrainingGUI:
         if self.model_changing:
             return
             
-        if model_name and model_name != self.engine.current_model:
+        # If no model selected (empty string), don't switch
+        if not model_name:
+            return
+            
+        if model_name != self.engine.current_model:
             # Check for unsaved changes
             if self.unsaved_changes:
                 response = messagebox.askyesnocancel(
@@ -244,12 +260,20 @@ class TrainingGUI:
             self.model_changing = False
     
     def update_model_dropdown(self):
+        """Update the model dropdown with current available models"""
         if hasattr(self, 'model_combobox'):
-            self.model_combobox['values'] = self.engine.available_models
-            if self.engine.current_model:
+            available_models = self.engine.available_models
+            self.model_combobox['values'] = available_models
+            
+            # Set the current value appropriately
+            if self.engine.current_model and self.engine.current_model in available_models:
                 self.model_combobox.set(self.engine.current_model)
-            elif self.engine.available_models:
-                self.model_combobox.set(self.engine.available_models[0])
+            elif available_models:
+                # Set to first available model
+                self.model_combobox.set(available_models[0])
+            else:
+                # No models available - clear the selection
+                self.model_combobox.set('')
     
     def setup_gui(self):
         # Configure main window grid
@@ -299,6 +323,8 @@ class TrainingGUI:
             style='Dark.TCombobox'
         )
         self.model_combobox.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Set initial value
         if self.engine.current_model:
             self.model_combobox.set(self.engine.current_model)
         elif self.engine.available_models:
@@ -941,15 +967,34 @@ class TrainingGUI:
         if not self.engine.current_model:
             messagebox.showwarning("Warning", "Please create or select a model first.")
             return
+        
+        # Use a mutable object to track the group index for subsequent saves
+        group_index = [None]
+        
+        def on_save(group_data, is_new=True):
+            if is_new:
+                # First save - create new group
+                self.engine.add_qa_group(group_data)
+                group_index[0] = len(self.engine.get_qa_groups()) - 1
+            else:
+                # Subsequent saves - update existing group
+                if group_index[0] is not None:
+                    self.engine.update_qa_group(group_index[0], group_data)
+                else:
+                    # Fallback: find the group by name and update it
+                    for i, group in enumerate(self.engine.get_qa_groups()):
+                        if (group.get('group_name') == group_data['group_name'] and 
+                            group.get('group_description') == group_data.get('group_description', '')):
+                            self.engine.update_qa_group(i, group_data)
+                            group_index[0] = i
+                            break
             
-        def on_save(group_data):
-            self.engine.add_qa_group(group_data)
             if self.save_current_model():
                 self.refresh_groups()
             else:
                 self.mark_unsaved_changes()
         
-        editor = GroupEditor(self.root, on_save=on_save)
+        editor = GroupEditor(self.root, on_save=on_save, is_new_group=True)
         # Update the section combobox in the editor
         self.update_editor_sections(editor)
     
@@ -958,14 +1003,15 @@ class TrainingGUI:
             messagebox.showwarning("Warning", "Please create or select a model first.")
             return
             
-        def on_save(group_data):
+        def on_save(group_data, is_new=False):
+            # Always update the existing group when editing
             self.engine.update_qa_group(index, group_data)
             if self.save_current_model():
                 self.refresh_groups()
             else:
                 self.mark_unsaved_changes()
         
-        editor = GroupEditor(self.root, self.engine.get_qa_groups()[index], on_save)
+        editor = GroupEditor(self.root, self.engine.get_qa_groups()[index], on_save, is_new_group=False)
         # Update the section combobox in the editor
         self.update_editor_sections(editor)
     

@@ -3,7 +3,7 @@ from tkinter import ttk, scrolledtext, messagebox
 from .dialogs import BaseDialog, QuestionAnswerEditor, BranchNameDialog
 
 class GroupEditor(BaseDialog):
-    def __init__(self, parent, group_data=None, on_save=None):
+    def __init__(self, parent, group_data=None, on_save=None, is_new_group=False):
         super().__init__(parent, "QA Group Editor", 800, 550)
         self.on_save = on_save
         self.group_data = group_data or {}
@@ -12,6 +12,8 @@ class GroupEditor(BaseDialog):
         self.unsaved_changes = False
         self.original_data = {}
         self.saving = False  # Prevent multiple saves
+        self.is_new_group = is_new_group  # Track if this is a new group or editing existing
+        self.has_been_saved = False  # Track if this group has been saved at least once
         
         # Make window resizable and set minimum size
         self.window.minsize(800, 500)
@@ -29,6 +31,12 @@ class GroupEditor(BaseDialog):
         
         # Set window close protocol
         self.window.protocol("WM_DELETE_WINDOW", self.confirm_close)
+        
+        # Update window title based on mode
+        if self.is_new_group:
+            self.window.title("Create New QA Group")
+        else:
+            self.window.title("Edit QA Group")
     
     def configure_ttk_styles(self):
         """Configure ttk styles to match the main application"""
@@ -157,9 +165,10 @@ class GroupEditor(BaseDialog):
         header = tk.Frame(parent, bg='#1a1a2e')
         header.grid_columnconfigure(0, weight=1)
         
+        title_text = "Create New QA Group" if self.is_new_group else "Edit QA Group"
         tk.Label(
             header,
-            text="QA Group Editor",
+            text=title_text,
             font=('Arial', 16, 'bold'),
             bg='#1a1a2e',
             fg='white'
@@ -470,10 +479,11 @@ class GroupEditor(BaseDialog):
             pady=10
         ).pack(side=tk.RIGHT, padx=(0, 10))
         
-        # Main save button that changes state - changed from "Create" to "Save"
+        # Main save button - text depends on whether this is a new group or editing existing
+        save_button_text = "💾 Create Group" if self.is_new_group and not self.has_been_saved else "💾 Save Group"
         self.save_btn = tk.Button(
             button_container,
-            text="💾 Save Group",  # Always says "Save" now, not "Create"
+            text=save_button_text,
             command=self.save_group,
             bg='#00ff88',
             fg='black',
@@ -518,14 +528,16 @@ class GroupEditor(BaseDialog):
         if not self.unsaved_changes and self.has_changes():
             self.unsaved_changes = True
             # Update save button to indicate unsaved changes
-            self.save_btn.config(text="💾 Save Group *", bg='#ffa500')
+            button_text = "💾 Create Group *" if self.is_new_group and not self.has_been_saved else "💾 Save Group *"
+            self.save_btn.config(text=button_text, bg='#ffa500')
     
     def clear_unsaved_changes(self):
         """Clear unsaved changes flag"""
         self.unsaved_changes = False
         self.save_original_state()
         # Reset save button
-        self.save_btn.config(text="💾 Save Group", bg='#00ff88')
+        button_text = "💾 Create Group" if self.is_new_group and not self.has_been_saved else "💾 Save Group"
+        self.save_btn.config(text=button_text, bg='#00ff88')
     
     def confirm_close(self):
         """Confirm closing if there are unsaved changes"""
@@ -658,7 +670,7 @@ class GroupEditor(BaseDialog):
             return False
             
         self.saving = True
-        self.save_btn.config(state='disabled', text="Saving...")
+        self.save_btn.config(state='disabled')
         self.window.update()
         
         try:
@@ -681,11 +693,25 @@ class GroupEditor(BaseDialog):
             }
             
             if self.on_save:
-                self.on_save(group_data)
+                self.on_save(group_data, self.is_new_group and not self.has_been_saved)
+            
+            # After first save of a new group, switch to edit mode
+            if self.is_new_group and not self.has_been_saved:
+                self.has_been_saved = True
+                self.is_new_group = False
+                self.window.title("Edit QA Group")
+                # Update the header title
+                for child in self.scrollable_frame.winfo_children():
+                    if isinstance(child, tk.Frame) and len(child.winfo_children()) > 0:
+                        header_label = child.winfo_children()[0]
+                        if isinstance(header_label, tk.Label):
+                            header_label.config(text="Edit QA Group")
+                            break
             
             self.clear_unsaved_changes()
             messagebox.showinfo("Success", "Group saved successfully!")
             return True
         finally:
             self.saving = False
-            self.save_btn.config(state='normal', text="💾 Save Group")
+            button_text = "💾 Create Group" if self.is_new_group and not self.has_been_saved else "💾 Save Group"
+            self.save_btn.config(state='normal', text=button_text)

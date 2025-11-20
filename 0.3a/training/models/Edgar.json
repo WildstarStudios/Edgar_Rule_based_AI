@@ -1,0 +1,41 @@
+{
+  "name": "Edgar",
+  "description": "",
+  "author": "WildStar Studios",
+  "version": "1.0.0",
+  "created_at": "2025-11-20T14:44:40.724367",
+  "sections": [
+    "General",
+    "Technical",
+    "Creative"
+  ],
+  "qa_groups": [
+    {
+      "group_name": "Greeting",
+      "group_description": "",
+      "questions": [
+        "hi"
+      ],
+      "answers": [
+        "hello"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [],
+      "section": "General"
+    },
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "test"
+      ],
+      "answers": [],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [],
+      "section": "General"
+    }
+  ],
+  "updated_at": "2025-11-20T15:29:26.876838"
+}
