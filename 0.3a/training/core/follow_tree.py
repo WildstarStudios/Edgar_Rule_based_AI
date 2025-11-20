@@ -10,6 +10,7 @@ class FollowUpEditor(BaseDialog):
         self.selected_node = None
         self.unsaved_changes = False
         self.current_node_has_changes = False
+        self.ignore_selection_event = False  # Add this flag
         
         # Make window resizable
         self.window.minsize(700, 500)
@@ -392,7 +393,7 @@ class FollowUpEditor(BaseDialog):
         tk.Button(
             button_container,
             text="❌ Cancel",
-            command=self.confirm_cancel,
+            command=self.confirm_close,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 11, 'bold'),
@@ -462,8 +463,8 @@ class FollowUpEditor(BaseDialog):
         self.clear_unsaved_changes()
         messagebox.showinfo("Saved", "Node saved successfully!")
     
-    def confirm_cancel(self):
-        """Confirm cancellation if there are unsaved changes"""
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
@@ -476,10 +477,13 @@ class FollowUpEditor(BaseDialog):
             if result is None:  # Cancel
                 return
             elif result:  # Yes - Save and Close
-                self.save_tree()
+                if self.save_tree():
+                    self.window.destroy()
                 return
-        
-        self.window.destroy()
+            else:  # No - Close without Saving
+                self.window.destroy()
+        else:
+            self.window.destroy()
     
     def confirm_node_switch(self):
         """Confirm switching nodes if there are unsaved changes"""
@@ -580,10 +584,16 @@ class FollowUpEditor(BaseDialog):
             self.enable_qa_controls(False)
     
     def on_tree_select(self, event=None):
+        # If we're ignoring selection events (to prevent infinite loop), return early
+        if self.ignore_selection_event:
+            self.ignore_selection_event = False
+            return
+        
         # Check for unsaved changes before switching nodes
         if self.selected_node and self.current_node_has_changes:
             if not self.confirm_node_switch():
-                # Cancel the selection change
+                # Cancel the selection change and set flag to prevent infinite loop
+                self.ignore_selection_event = True
                 self.tree.selection_set(self.selected_node)
                 return
         
@@ -592,6 +602,10 @@ class FollowUpEditor(BaseDialog):
             self.selected_node = None
             self.clear_qa_lists()
             self.enable_qa_controls(False)
+            return
+        
+        # If we're selecting the same node, just return
+        if self.selected_node == selected[0]:
             return
         
         self.selected_node = selected[0]
@@ -788,4 +802,4 @@ class FollowUpEditor(BaseDialog):
         
         self.clear_unsaved_changes()
         messagebox.showinfo("Success", "Follow-up tree saved successfully!")
-        self.window.destroy()
+        return True
