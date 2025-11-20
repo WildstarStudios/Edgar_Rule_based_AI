@@ -37,8 +37,8 @@
     # 0.3a - Modularization and Accuracy Improvements
     * module system ✅
     * Word Variant System ✅
-    * Group Sections Upgrade ❌
-    * Multi Follow Up tree variation ❌
+    * Group Sections Upgrade ✅
+    * Multi Follow Up tree variation ✅
     * make WebUi ✅
     * Make login page ✅
 
@@ -46,8 +46,8 @@
     * Topic Context System
     * Search format instead of load.
     * terminal based trainers
-	* chat mini window
-	* subroutines
+    * chat mini window
+    * subroutines
     * new ui libary
 
 
@@ -57,12 +57,12 @@
 * basic context engine ✅
 * follow up tree system ✅
 * Multi Q&A system ✅
-* Multi Follow Up tree variation ❌
-* Group Sections Upgrade ❌
+* Multi Follow Up tree variation ✅
+* Group Sections Upgrade ✅
 * Word Variant System ✅
 * module system ✅
-* make WebUi ❌
-* Make login page ❌
+* make WebUi ✅
+* Make login page ✅
 
 
 # Modules
