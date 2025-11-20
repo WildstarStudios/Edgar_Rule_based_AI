@@ -14,12 +14,19 @@ class BaseDialog:
         self.window.grab_set()
         self.center_window(parent)
         self.window.bind('<Escape>', lambda e: self.window.destroy())
+        
+        # Set window close protocol to handle unsaved changes
+        self.window.protocol("WM_DELETE_WINDOW", self.confirm_close)
     
     def center_window(self, parent):
         self.window.update_idletasks()
         x = parent.winfo_x() + (parent.winfo_width() // 2) - (self.window.winfo_width() // 2)
         y = parent.winfo_y() + (parent.winfo_height() // 2) - (self.window.winfo_height() // 2)
         self.window.geometry(f"+{x}+{y}")
+    
+    def confirm_close(self):
+        """Default close handler - can be overridden by subclasses"""
+        self.window.destroy()
 
 class CreateModelDialog(BaseDialog):
     def __init__(self, parent, on_create=None):
@@ -160,7 +167,7 @@ class CreateModelDialog(BaseDialog):
         tk.Button(
             button_frame,
             text="❌ Cancel",
-            command=self.confirm_cancel,
+            command=self.confirm_close,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -184,20 +191,23 @@ class CreateModelDialog(BaseDialog):
         # Reset create button
         self.create_button.config(text="💾 Create Model", bg='#00ff88')
     
-    def confirm_cancel(self):
-        """Confirm cancellation if there are unsaved changes"""
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Do you want to discard them?\n\n"
-                "Yes - Discard Changes\n"
-                "No - Continue Editing\n"
+                "You have unsaved changes. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
                 "Cancel - Return to Dialog"
             )
             
             if result is None:  # Cancel
                 return
-            elif result:  # Yes - Discard Changes
+            elif result:  # Yes - Save and Close
+                self.create_model()
+                return
+            else:  # No - Close without Saving
                 self.window.destroy()
         else:
             self.window.destroy()
@@ -375,7 +385,7 @@ class EditModelDialog(BaseDialog):
         tk.Button(
             button_frame,
             text="❌ Cancel",
-            command=self.confirm_cancel,
+            command=self.confirm_close,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -430,20 +440,23 @@ class EditModelDialog(BaseDialog):
         # Reset save button
         self.save_button.config(text="💾 Save Changes", bg='#00ff88')
     
-    def confirm_cancel(self):
-        """Confirm cancellation if there are unsaved changes"""
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Do you want to discard them?\n\n"
-                "Yes - Discard Changes\n"
-                "No - Continue Editing\n"
+                "You have unsaved changes. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
                 "Cancel - Return to Dialog"
             )
             
             if result is None:  # Cancel
                 return
-            elif result:  # Yes - Discard Changes
+            elif result:  # Yes - Save and Close
+                self.save_model()
+                return
+            else:  # No - Close without Saving
                 self.window.destroy()
         else:
             self.window.destroy()
@@ -550,7 +563,7 @@ class BranchNameDialog(BaseDialog):
         tk.Button(
             button_frame,
             text="❌ Cancel",
-            command=self.confirm_cancel,
+            command=self.confirm_close,
             bg='#ff4d7d',
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -585,20 +598,23 @@ class BranchNameDialog(BaseDialog):
         # Reset save button
         self.save_button.config(text="💾 Save Name", bg='#00ff88')
     
-    def confirm_cancel(self):
-        """Confirm cancellation if there are unsaved changes"""
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Do you want to discard them?\n\n"
-                "Yes - Discard Changes\n"
-                "No - Continue Editing\n"
+                "You have unsaved changes. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
                 "Cancel - Return to Dialog"
             )
             
             if result is None:  # Cancel
                 return
-            elif result:  # Yes - Discard Changes
+            elif result:  # Yes - Save and Close
+                self.save_name()
+                return
+            else:  # No - Close without Saving
                 self.window.destroy()
         else:
             self.window.destroy()
@@ -669,7 +685,7 @@ class QuestionAnswerEditor(BaseDialog):
         tk.Button(
             button_frame, 
             text="❌ Cancel", 
-            command=self.confirm_cancel,
+            command=self.confirm_close,
             bg='#ff4d7d', 
             fg='white',
             font=('Arial', 10, 'bold'),
@@ -706,20 +722,23 @@ class QuestionAnswerEditor(BaseDialog):
         # Reset save button
         self.save_button.config(text="💾 Save", bg='#00ff88')
     
-    def confirm_cancel(self):
-        """Confirm cancellation if there are unsaved changes"""
+    def confirm_close(self):
+        """Confirm closing if there are unsaved changes"""
         if self.unsaved_changes:
             result = messagebox.askyesnocancel(
                 "Unsaved Changes",
-                "You have unsaved changes. Do you want to discard them?\n\n"
-                "Yes - Discard Changes\n"
-                "No - Continue Editing\n"
+                "You have unsaved changes. Do you want to save before closing?\n\n"
+                "Yes - Save and Close\n"
+                "No - Close without Saving\n"
                 "Cancel - Return to Editor"
             )
             
             if result is None:  # Cancel
                 return
-            elif result:  # Yes - Discard Changes
+            elif result:  # Yes - Save and Close
+                self.save()
+                return
+            else:  # No - Close without Saving
                 self.window.destroy()
         else:
             self.window.destroy()
