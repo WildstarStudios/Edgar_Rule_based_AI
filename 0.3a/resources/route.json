@@ -42,22 +42,22 @@
       ]
     },
     {
-      "group_name": "search up",
+      "group_name": "Wikipedia",
       "engine": "search",
       "word_limit_enabled": true,
-      "max_words": 5,
+      "max_words": 10,
       "penalty_per_word": 0.25,
       "questions": [
         "search",
-        "look up"
+        "search up"
       ]
     }
   ],
   "available_engines": [
-    "weather",
     "recipie",
-    "search",
+    "weather",
     "time",
+    "search",
     "joke"
   ],
   "version": "1.0"
