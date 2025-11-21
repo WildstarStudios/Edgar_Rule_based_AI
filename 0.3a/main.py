@@ -92,6 +92,12 @@ class DarkChatbotGUI:
         # Verbose mode setting
         self.verbose_mode = self.config.getboolean('gui', 'verbose_mode', fallback=False)
         
+        # Thinking animation variables
+        self.thinking_animation_active = False
+        self.thinking_animation_job = None
+        self.thinking_dots = 0
+        self.thinking_label = None
+        
         self.setup_gui()
     
     # ===== STREAMING LAYER CALLBACKS =====
@@ -471,6 +477,18 @@ class DarkChatbotGUI:
                                    justify='center',
                                    font=('Arial', 8))
         
+        # Create thinking animation label (initially hidden)
+        self.thinking_label = tk.Label(
+            chat_frame,
+            text="",
+            font=('Arial', 10, 'italic'),
+            bg=self.colors['bg_primary'],
+            fg=self.colors['accent_warning'],
+            justify='left'
+        )
+        self.thinking_label.grid(row=1, column=0, sticky='w', padx=20, pady=(0, 10))
+        self.thinking_label.grid_remove()  # Hide initially
+        
         # Quick actions
         quick_actions_frame = tk.Frame(main_content, bg=self.colors['bg_primary'])
         quick_actions_frame.grid(row=1, column=0, sticky=(tk.W, tk.E), pady=(0, 10))
@@ -542,6 +560,37 @@ class DarkChatbotGUI:
         
         # Focus on input field
         self.user_input.focus()
+    
+    def start_thinking_animation(self):
+        """Start the thinking animation (only when verbose mode is off)"""
+        if self.verbose_mode or self.thinking_animation_active:
+            return
+            
+        self.thinking_animation_active = True
+        self.thinking_dots = 0
+        self.thinking_label.grid()  # Show the label
+        self._update_thinking_animation()
+    
+    def _update_thinking_animation(self):
+        """Update the thinking animation dots"""
+        if not self.thinking_animation_active:
+            return
+            
+        self.thinking_dots = (self.thinking_dots + 1) % 4
+        dots = "." * self.thinking_dots
+        self.thinking_label.config(text=f"Thinking{dots}")
+        
+        # Schedule next update
+        self.thinking_animation_job = self.root.after(500, self._update_thinking_animation)
+    
+    def stop_thinking_animation(self):
+        """Stop the thinking animation"""
+        self.thinking_animation_active = False
+        if self.thinking_animation_job:
+            self.root.after_cancel(self.thinking_animation_job)
+            self.thinking_animation_job = None
+        self.thinking_label.grid_remove()  # Hide the label
+        self.thinking_label.config(text="")
     
     def quick_action(self, action):
         if action == "reset":
@@ -625,6 +674,10 @@ How can I assist you today?"""
         # Display user message
         self.add_message("user", user_text)
         
+        # Start thinking animation if verbose mode is off
+        if not self.verbose_mode:
+            self.start_thinking_animation()
+        
         # Process message in separate thread to keep GUI responsive
         threading.Thread(target=self.process_message, args=(user_text,), daemon=True).start()
     
@@ -636,6 +689,10 @@ How can I assist you today?"""
             
             # Process the message using the streaming layer
             responses = self.streaming_layer.process_message(user_text)
+            
+            # Stop thinking animation if it's running
+            if not self.verbose_mode:
+                self.root.after(0, self.stop_thinking_animation)
             
             # Clear thinking indicator if shown
             if self.verbose_mode:
@@ -653,6 +710,10 @@ How can I assist you today?"""
             self.root.after(0, lambda: self.display_responses_with_streaming(responses))
             
         except Exception as e:
+            # Stop thinking animation on error
+            if not self.verbose_mode:
+                self.root.after(0, self.stop_thinking_animation)
+                
             self.root.after(0, lambda: self.add_message("error", f"An error occurred: {str(e)}"))
             self.root.after(0, self.processing_complete)
     
