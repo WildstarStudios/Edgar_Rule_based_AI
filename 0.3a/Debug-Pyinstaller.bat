@@ -13,6 +13,16 @@ del /q *.spec 2>nul
 mkdir "%PACKAGE_DIR%"
 
 REM ============================================================
+REM Shared BS4 hidden imports (added to all apps using web queries)
+REM ============================================================
+set BS4_IMPORTS=^
+  --hidden-import "beautifulsoup4" ^
+  --hidden-import "bs4" ^
+  --hidden-import "bs4.element" ^
+  --hidden-import "bs4.builder" ^
+  --hidden-import "bs4.builder._htmlparser"
+
+REM ============================================================
 REM Build chat.exe from main.py (GUI app) for 0.3a
 REM ============================================================
 echo Building chat-0.3a.exe...
@@ -25,14 +35,15 @@ echo Building chat-0.3a.exe...
   --add-data "core;core" ^
   --hidden-import "core.modules.weather" ^
   --hidden-import "core.modules.time" ^
+  --hidden-import "core.modules.wikipedia_searcher" ^
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
-  --hidden-import "ddgs" ^
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
+  %BS4_IMPORTS% ^
   main.py
 
 REM ============================================================
@@ -49,14 +60,15 @@ echo Building tty-0.3a.exe...
   --add-data "core;core" ^
   --hidden-import "core.modules.weather" ^
   --hidden-import "core.modules.time" ^
+  --hidden-import "core.modules.wikipedia_searcher" ^
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
-  --hidden-import "ddgs" ^
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
+  %BS4_IMPORTS% ^
   tty.py
 
 REM ============================================================
@@ -74,6 +86,7 @@ echo Building train-0.3a.exe...
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
+  %BS4_IMPORTS% ^
   training\train.py
 
 REM ============================================================
@@ -88,6 +101,7 @@ echo Building route-trainer-0.3a.exe...
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
+  %BS4_IMPORTS% ^
   "route trainer.py"
 
 REM ============================================================
@@ -107,9 +121,9 @@ echo Building webui-0.3a.exe...
   --hidden-import "fuzzywuzzy.fuzz" ^
   --hidden-import "pytz" ^
   --hidden-import "requests" ^
-  --hidden-import "ddgs" ^
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
+  %BS4_IMPORTS% ^
   webui.py
 
 REM ============================================================
@@ -138,7 +152,7 @@ echo - route-trainer-0.3a.exe - Routing configuration tool
 echo - webui-0.3a.exe     - Web interface application
 echo - config.cfg         - Configuration file
 echo - resources\         - Routing configuration and resources
-echo - models\           - AI model data
+echo - models\            - AI model data
 echo.
 echo Usage:
 echo 1. Run chat-0.3a.exe to start the main AI assistant (GUI)
@@ -153,10 +167,16 @@ echo - Same AI engine and module routing as GUI
 echo - Real-time text streaming
 echo - All commands: stats, context, reset, models, modules, config, help
 echo.
+echo New Features in v0.3a:
+echo - Wikipedia search module (replaces DuckDuckGo search)
+echo - Enhanced module routing system
+echo - Improved text streaming
+echo - Better error handling
+echo.
 echo System Requirements:
 echo - Windows 10 or later
 echo - Python 3.12 (included in executable)
-echo - Internet connection for weather and time modules
+echo - Internet connection for weather and Wikipedia modules
 ) > "%PACKAGE_DIR%\README.txt"
 
 REM ============================================================
