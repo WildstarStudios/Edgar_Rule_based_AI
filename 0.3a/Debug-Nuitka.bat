@@ -3,7 +3,7 @@
 REM ============================================================
 REM Find Nuitka in virtual environment
 REM ============================================================
-set "VENV_DIR=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a\.venv"
+set "VENV_DIR=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\.venv"
 set "NUITKA=%VENV_DIR%\Scripts\nuitka"
 set "PYTHON=%VENV_DIR%\Scripts\python.exe"
 
@@ -65,7 +65,7 @@ echo Building chat-0.3a.exe...
   --include-data-dir=resources=resources ^
   --include-data-dir=models=models ^
   --include-data-dir=core=core ^
-  ui\main.py
+  main.py
 
 if errorlevel 1 (
     echo ERROR: Failed to build chat-0.3a.exe
@@ -96,7 +96,7 @@ echo Building tty-0.3a.exe...
   --include-data-dir=resources=resources ^
   --include-data-dir=models=models ^
   --include-data-dir=core=core ^
-  ui\tty.py
+  tty.py
 
 if errorlevel 1 (
     echo ERROR: Failed to build tty-0.3a.exe
@@ -147,7 +147,7 @@ echo Building route-trainer-0.3a.exe...
   %BS4_IMPORTS% ^
   --include-data-dir=resources=resources ^
   --include-data-dir=core=core ^
-  "route trainer.py"
+  "training\route trainer.py"
 
 if errorlevel 1 (
     echo ERROR: Failed to build route-trainer-0.3a.exe

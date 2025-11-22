@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import ttk, scrolledtext, messagebox
 import tkinter.simpledialog
+import os
 
 class BaseDialog:
     """Base class for dialogs with common functionality"""
@@ -11,6 +12,9 @@ class BaseDialog:
         self.window.configure(bg='#2d2d5a')
         self.window.minsize(400, 300)
         
+        # Set window icon
+        self.set_window_icon()
+        
         self.window.transient(parent)
         self.window.grab_set()
         self.center_window(parent)
@@ -18,6 +22,30 @@ class BaseDialog:
         
         # Set window close protocol to handle unsaved changes
         self.window.protocol("WM_DELETE_WINDOW", self.confirm_close)
+    
+    def set_window_icon(self):
+        """Set the window icon for all dialogs"""
+        try:
+            # Try different possible locations for the icon
+            icon_paths = [
+                "icon/train.ico",
+                "../icon/train.ico",
+                "../../icon/train.ico",
+                os.path.join(os.path.dirname(__file__), "icon/train.ico"),
+                os.path.join(os.path.dirname(__file__), "../icon/train.ico"),
+                os.path.join(os.path.dirname(__file__), "../../icon/train.ico")
+            ]
+            
+            for icon_path in icon_paths:
+                if os.path.exists(icon_path):
+                    self.window.iconbitmap(icon_path)
+                    print(f"✅ Loaded icon from: {icon_path}")
+                    break
+            else:
+                print("⚠️ Could not find train.ico in any expected location")
+                
+        except Exception as e:
+            print(f"⚠️ Could not load window icon: {e}")
     
     def center_window(self, parent):
         self.window.update_idletasks()
@@ -935,7 +963,7 @@ class EditModelDialog(BaseDialog):
         version = self.version_var.get().strip()
         
         if not version:
-            version = "1.0.0"
+            version = "1..0.0"
         
         try:
             if self.on_save:

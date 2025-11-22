@@ -1,6 +1,6 @@
 @echo off
-
-set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a\.venv\Scripts\pyinstaller.exe
+cd /d "%~dp0"
+set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\.venv\Scripts\pyinstaller.exe
 set PACKAGE_DIR=dist\package
 set ICON_DIR=icon
 
@@ -46,7 +46,7 @@ echo Building chat-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  ui\main.py
+  main.py
 
 REM ============================================================
 REM Build tty.exe from tty.py (Terminal app) for 0.3a
@@ -59,7 +59,6 @@ echo Building tty-0.3a.exe...
   --console ^
   --hidden-import "configparser" ^
   --add-data "resources;resources" ^
-  --add-data "models;models" ^
   --add-data "core;core" ^
   --hidden-import "core.modules.weather" ^
   --hidden-import "core.modules.time" ^
@@ -72,7 +71,7 @@ echo Building tty-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  ui\tty.py
+  tty.py
 
 REM ============================================================
 REM Build train.exe from training/train.py (GUI app) for 0.3a
@@ -107,7 +106,7 @@ echo Building route-trainer-0.3a.exe...
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
   %BS4_IMPORTS% ^
-  "route trainer.py"
+  "training\route trainer.py"
 
 REM ============================================================
 REM Build webui.exe from webui.py (Web interface app) for 0.3a
@@ -129,7 +128,7 @@ echo Building webui-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  ui\webui.py
+  webui.py
 
 REM ============================================================
 REM Copy additional resource files to package directory

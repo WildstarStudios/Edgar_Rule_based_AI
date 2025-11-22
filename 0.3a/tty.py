@@ -12,18 +12,16 @@ import time
 import threading
 from typing import List, Dict, Any, Tuple
 
-# Add the project root directory to Python path
+# Add the core directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-project_root = os.path.dirname(current_dir)  # Go up one level from ui folder
-sys.path.insert(0, project_root)  # Add project root to path
+core_dir = os.path.join(current_dir, 'core')
+sys.path.insert(0, core_dir)
 
 try:
     from core.layer import create_streaming_layer
     print("✅ Successfully imported StreamingLayer from core.layer")
 except ImportError as e:
     print(f"❌ Error importing StreamingLayer: {e}")
-    print(f"Current Python path: {sys.path}")
-    print(f"Looking for core in: {project_root}")
     sys.exit(1)
 
 
@@ -33,7 +31,8 @@ class TTYInterface:
     Provides all the functionality of the GUI but in terminal form.
     """
     
-    def __init__(self):
+    def __init__(self, config_file: str = "config.cfg"):
+        self.config_file = config_file
         self.is_processing = False
         self.current_response = ""
         self.streaming_complete = threading.Event()
@@ -41,7 +40,7 @@ class TTYInterface:
         
         # Initialize streaming layer with terminal callbacks
         self.streaming_layer = create_streaming_layer(
-            config_file=os.path.join(project_root, "config.cfg"),
+            config_file=config_file,
             streaming_callback=self._handle_streaming,
             thinking_callback=self._handle_thinking,
             response_complete_callback=self._handle_response_complete,
@@ -405,8 +404,7 @@ def main():
     """Main entry point for TTY interface"""
     try:
         # Check if models folder exists
-        models_path = os.path.join(project_root, "models")
-        if not os.path.exists(models_path):
+        if not os.path.exists("models"):
             print("❌ 'models' folder not found.")
             print("💡 Please run the training GUI first to create models, or")
             print("   create a 'models' folder with your model JSON files.")

@@ -15,6 +15,11 @@ class TrainingGUI:
         self.root.geometry("1200x800")
         self.root.minsize(350, 300)
         self.root.configure(bg='#1a1a2e')
+        # Set window icon and theme
+        try:
+            self.root.iconbitmap("icon/train.ico")
+        except:
+            pass
         
         # Initialize backend engine
         self.engine = TrainingEngine()
