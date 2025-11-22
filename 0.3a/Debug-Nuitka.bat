@@ -147,7 +147,7 @@ echo Building route-trainer-0.3a.exe...
   %BS4_IMPORTS% ^
   --include-data-dir=resources=resources ^
   --include-data-dir=core=core ^
-  "training\route trainer.py"
+  "route trainer.py"
 
 if errorlevel 1 (
     echo ERROR: Failed to build route-trainer-0.3a.exe
@@ -176,7 +176,7 @@ echo Building webui-0.3a.exe...
   --include-data-dir=models=models ^
   --include-data-dir=core=core ^
   --include-data-dir=webui=webui ^
-  ui\webui.py
+  webui.py
 
 if errorlevel 1 (
     echo ERROR: Failed to build webui-0.3a.exe

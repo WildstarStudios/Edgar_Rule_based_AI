@@ -106,7 +106,7 @@ echo Building route-trainer-0.3a.exe...
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
   %BS4_IMPORTS% ^
-  "training\route trainer.py"
+  "route trainer.py"
 
 REM ============================================================
 REM Build webui.exe from webui.py (Web interface app) for 0.3a
