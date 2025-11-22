@@ -6,17 +6,18 @@ import sys
 import os
 import configparser
 
-# Add the core directory to Python path
+# Add the project root directory to Python path
 current_dir = os.path.dirname(os.path.abspath(__file__))
-core_dir = os.path.join(current_dir, 'core')
-sys.path.insert(0, core_dir)  # Use insert(0) to prioritize this path
+project_root = os.path.dirname(current_dir)  # Go up one level from ui folder
+sys.path.insert(0, project_root)  # Add project root to path
 
 try:
     from core.layer import create_streaming_layer
     print("✅ Successfully imported StreamingLayer from core.layer")
 except ImportError as e:
     print(f"❌ Error importing StreamingLayer: {e}")
-    print("Please make sure core/layer.py exists")
+    print(f"Current Python path: {sys.path}")
+    print(f"Looking for core in: {project_root}")
     sys.exit(1)
 
 class DarkChatbotGUI:
@@ -36,7 +37,7 @@ class DarkChatbotGUI:
         
         # Set window icon and theme
         try:
-            self.root.iconbitmap("edgar_icon.ico")
+            self.root.iconbitmap(os.path.join(current_dir, "..", "icon", "chat.ico"))
         except:
             pass
         
@@ -76,7 +77,7 @@ class DarkChatbotGUI:
         
         # Initialize streaming layer with configuration
         self.streaming_layer = create_streaming_layer(
-            config_file="config.cfg",
+            config_file=os.path.join(current_dir, "..", "config.cfg"),
             streaming_callback=self._handle_streaming,
             thinking_callback=self._handle_thinking,
             response_complete_callback=self._handle_response_complete,
@@ -147,8 +148,8 @@ class DarkChatbotGUI:
                 config.set(section, key, value)
         
         # Load from file if exists
-        if os.path.exists("config.cfg"):
-            config.read("config.cfg")
+        if os.path.exists(os.path.join(current_dir, "..", "config.cfg")):
+            config.read(os.path.join(current_dir, "..", "config.cfg"))
             print("✅ Loaded GUI configuration from config.cfg")
         else:
             print("⚠️  config.cfg not found, using default GUI configuration")

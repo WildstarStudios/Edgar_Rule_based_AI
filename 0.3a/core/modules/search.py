@@ -13,7 +13,7 @@ import urllib.parse
 from typing import List, Tuple, Optional
 
 # Module configuration
-module_name = "wikipedia_searcher"
+module_name = "search"
 module_version = "1.0"
 
 def process(user_input: str, api) -> List[Tuple[str, float, str]]:

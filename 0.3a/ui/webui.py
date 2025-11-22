@@ -7,11 +7,24 @@ from datetime import datetime, timedelta
 import re
 import json
 import time
-from core.layer import create_streaming_layer
+import sys
+
+# Add the project root directory to Python path
+current_dir = os.path.dirname(os.path.abspath(__file__))
+project_root = os.path.dirname(current_dir)  # Go up one level from ui folder
+sys.path.insert(0, project_root)  # Add project root to path
+
+try:
+    from core.layer import create_streaming_layer
+    print("✅ Successfully imported StreamingLayer from core.layer")
+except ImportError as e:
+    print(f"❌ Error importing StreamingLayer: {e}")
+    print(f"Current Python path: {sys.path}")
+    sys.exit(1)
 
 app = Flask(__name__, 
-            static_folder='webui/static',
-            template_folder='webui')
+            static_folder='../webui/static',
+            template_folder='../webui')
 app.secret_key = 'your-secret-key-here-change-in-production'
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
@@ -40,7 +53,8 @@ streaming_layer = None
 
 def init_db():
     """Initialize the SQLite database"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
     # Users table
@@ -85,7 +99,7 @@ def init_streaming_layer():
     global streaming_layer
     try:
         streaming_layer = create_streaming_layer(
-            config_file="config.cfg",
+            config_file=os.path.join(project_root, "config.cfg"),
             streaming_callback=None,  # We'll handle streaming differently for web
             thinking_callback=None,
             response_complete_callback=None,
@@ -119,7 +133,8 @@ def create_remember_me_token(user_id):
     token = secrets.token_urlsafe(32)
     expires = datetime.now() + timedelta(days=30)
     
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('''
         INSERT INTO user_sessions (session_id, user_id, expires_at)
@@ -132,7 +147,8 @@ def create_remember_me_token(user_id):
 
 def validate_remember_me_token(token):
     """Validate remember me token and return user_id if valid"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
     c.execute('''
@@ -147,7 +163,8 @@ def validate_remember_me_token(token):
 
 def delete_remember_me_token(token):
     """Delete a remember me token"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('DELETE FROM user_sessions WHERE session_id = ?', (token,))
     conn.commit()
@@ -570,7 +587,8 @@ def check_username():
     if not username:
         return jsonify({'available': False})
     
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('SELECT id FROM users WHERE username = ?', (username,))
     result = c.fetchone()
@@ -623,7 +641,8 @@ def check_password_strength():
 # Database helper functions
 def authenticate_user(username, password):
     """Authenticate user credentials"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     
     c.execute('''
@@ -646,7 +665,8 @@ def authenticate_user(username, password):
 
 def user_exists(username, email):
     """Check if username or email already exists"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('SELECT id FROM users WHERE username = ? OR email = ?', (username, email))
     result = c.fetchone()
@@ -657,7 +677,8 @@ def create_user(username, email, password, first_name, last_name):
     """Create a new user"""
     try:
         password_hash = hash_password(password)
-        conn = sqlite3.connect('edgarai_users.db')
+        db_path = os.path.join(project_root, 'edgarai_users.db')
+        conn = sqlite3.connect(db_path)
         c = conn.cursor()
         c.execute('''
             INSERT INTO users (username, email, password_hash, first_name, last_name)
@@ -671,7 +692,8 @@ def create_user(username, email, password, first_name, last_name):
 
 def update_last_login(user_id):
     """Update user's last login timestamp"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('UPDATE users SET last_login = ? WHERE id = ?', (datetime.now(), user_id))
     conn.commit()
@@ -679,7 +701,8 @@ def update_last_login(user_id):
 
 def get_user_info(user_id):
     """Get user information"""
-    conn = sqlite3.connect('edgarai_users.db')
+    db_path = os.path.join(project_root, 'edgarai_users.db')
+    conn = sqlite3.connect(db_path)
     c = conn.cursor()
     c.execute('''
         SELECT username, email, first_name, last_name, created_at, last_login, subscription_type
@@ -702,11 +725,6 @@ if __name__ == '__main__':
     # Initialize database and streaming layer
     init_db()
     init_streaming_layer()
-    
-    # Create directories if they don't exist
-    os.makedirs('webui/static/images', exist_ok=True)
-    os.makedirs('webui/login', exist_ok=True)
-    os.makedirs('webui/chat', exist_ok=True)
     
     # Run Flask app
     app.run(host='0.0.0.0', port=5000, debug=False)

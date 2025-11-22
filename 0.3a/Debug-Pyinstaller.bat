@@ -2,6 +2,7 @@
 
 set PYINSTALLER=C:\Users\aayde\Documents\GitHub\Edgar_Rule_based_AI\0.3a\.venv\Scripts\pyinstaller.exe
 set PACKAGE_DIR=dist\package
+set ICON_DIR=icon
 
 REM ============================================================
 REM Clean previous builds and create package directory
@@ -29,13 +30,14 @@ echo Building chat-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
   --name "chat-0.3a" ^
-  --add-data "config.cfg;." ^
+  --icon "%ICON_DIR%\chat.ico" ^
+  --hidden-import "configparser" ^
   --add-data "resources;resources" ^
   --add-data "models;models" ^
   --add-data "core;core" ^
   --hidden-import "core.modules.weather" ^
   --hidden-import "core.modules.time" ^
-  --hidden-import "core.modules.wikipedia_searcher" ^
+  --hidden-import "core.modules.search" ^
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
@@ -44,7 +46,7 @@ echo Building chat-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  main.py
+  ui\main.py
 
 REM ============================================================
 REM Build tty.exe from tty.py (Terminal app) for 0.3a
@@ -53,14 +55,15 @@ echo Building tty-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
   --name "tty-0.3a" ^
+  --icon "%ICON_DIR%\tty.ico" ^
   --console ^
-  --add-data "config.cfg;." ^
+  --hidden-import "configparser" ^
   --add-data "resources;resources" ^
   --add-data "models;models" ^
   --add-data "core;core" ^
   --hidden-import "core.modules.weather" ^
   --hidden-import "core.modules.time" ^
-  --hidden-import "core.modules.wikipedia_searcher" ^
+  --hidden-import "core.modules.search" ^
   --hidden-import "fuzzywuzzy" ^
   --hidden-import "fuzzywuzzy.process" ^
   --hidden-import "fuzzywuzzy.fuzz" ^
@@ -69,7 +72,7 @@ echo Building tty-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  tty.py
+  ui\tty.py
 
 REM ============================================================
 REM Build train.exe from training/train.py (GUI app) for 0.3a
@@ -78,7 +81,8 @@ echo Building train-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
   --name "train-0.3a" ^
-  --add-data "config.cfg;." ^
+  --icon "%ICON_DIR%\train.ico" ^
+  --hidden-import "configparser" ^
   --add-data "resources;resources" ^
   --add-data "models;models" ^
   --add-data "core;core" ^
@@ -96,6 +100,7 @@ echo Building route-trainer-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
   --name "route-trainer-0.3a" ^
+  --icon "%ICON_DIR%\route-trainer.ico" ^
   --add-data "resources;resources" ^
   --add-data "core;core" ^
   --hidden-import "fuzzywuzzy" ^
@@ -111,7 +116,7 @@ echo Building webui-0.3a.exe...
 "%PYINSTALLER%" --onefile ^
   --distpath "%PACKAGE_DIR%" ^
   --name "webui-0.3a" ^
-  --add-data "config.cfg;." ^
+  --icon "%ICON_DIR%\webui.ico" ^
   --add-data "resources;resources" ^
   --add-data "models;models" ^
   --add-data "core;core" ^
@@ -124,7 +129,7 @@ echo Building webui-0.3a.exe...
   --hidden-import "Levenshtein" ^
   --hidden-import "Levenshtein.levenshtein_cpp" ^
   %BS4_IMPORTS% ^
-  webui.py
+  ui\webui.py
 
 REM ============================================================
 REM Copy additional resource files to package directory
@@ -133,6 +138,7 @@ echo Copying resource files...
 copy "config.cfg" "%PACKAGE_DIR%\"
 xcopy "resources" "%PACKAGE_DIR%\resources\" /E /I /Y
 xcopy "models" "%PACKAGE_DIR%\models\" /E /I /Y
+xcopy "%ICON_DIR%" "%PACKAGE_DIR%\%ICON_DIR%\" /E /I /Y
 
 REM ============================================================
 REM Create README file for the distribution
@@ -150,9 +156,10 @@ echo - tty-0.3a.exe       - Terminal/Command Line interface
 echo - train-0.3a.exe     - Training application
 echo - route-trainer-0.3a.exe - Routing configuration tool
 echo - webui-0.3a.exe     - Web interface application
-echo - config.cfg         - Configuration file
+echo - config.cfg         - Configuration file (shared by all apps)
 echo - resources\         - Routing configuration and resources
 echo - models\            - AI model data
+echo - icon\              - Application icons
 echo.
 echo Usage:
 echo 1. Run chat-0.3a.exe to start the main AI assistant (GUI)
@@ -161,6 +168,8 @@ echo 3. Run train-0.3a.exe to train new AI models
 echo 4. Run route-trainer-0.3a.exe to configure module routing
 echo 5. Run webui-0.3a.exe to start the web interface
 echo.
+echo Note: config.cfg is shared by all applications
+echo.
 echo TTY Interface Features:
 echo - Full terminal/command line interface
 echo - Same AI engine and module routing as GUI
@@ -168,15 +177,16 @@ echo - Real-time text streaming
 echo - All commands: stats, context, reset, models, modules, config, help
 echo.
 echo New Features in v0.3a:
-echo - Wikipedia search module (replaces DuckDuckGo search)
+echo - New search module (replaces DuckDuckGo search)
 echo - Enhanced module routing system
 echo - Improved text streaming
 echo - Better error handling
+echo - Custom application icons
 echo.
 echo System Requirements:
 echo - Windows 10 or later
 echo - Python 3.12 (included in executable)
-echo - Internet connection for weather and Wikipedia modules
+echo - Internet connection for weather and search modules
 ) > "%PACKAGE_DIR%\README.txt"
 
 REM ============================================================
@@ -195,6 +205,8 @@ echo BUILD COMPLETED SUCCESSFULLY!
 echo ========================================
 echo.
 echo Executables and resources are in: %PACKAGE_DIR%
+echo Icons have been embedded in executables and copied to icon folder.
+echo Config file is shared by all applications in the package directory.
 echo.
 pause
 echo Opening distribution folder...
