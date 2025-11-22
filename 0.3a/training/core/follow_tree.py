@@ -232,7 +232,21 @@ class FollowUpEditor(BaseDialog):
             padx=15,
             pady=4
         )
-        self.add_branch_btn.pack(side=tk.LEFT)
+        self.add_branch_btn.pack(side=tk.LEFT, padx=(0, 8))
+        
+        # Add Delete Node button
+        self.delete_node_btn = tk.Button(
+            tree_buttons,
+            text="🗑️ Delete",
+            command=self.delete_node,
+            bg='#ff4d7d',
+            fg='white',
+            font=('Arial', 9, 'bold'),
+            padx=15,
+            pady=4,
+            state='disabled'  # Initially disabled
+        )
+        self.delete_node_btn.pack(side=tk.LEFT)
         
         # Tree widget container - made expandable
         tree_container = tk.Frame(tree_frame, bg='#252547')
@@ -435,6 +449,9 @@ class FollowUpEditor(BaseDialog):
         
         # Enable/disable save node button
         self.save_node_btn.config(state=state)
+        
+        # Enable/disable delete node button
+        self.delete_node_btn.config(state=state)
     
     def mark_unsaved_changes(self):
         """Mark that there are unsaved changes in the current node"""
@@ -582,6 +599,7 @@ class FollowUpEditor(BaseDialog):
             self.selected_node = None
             self.clear_qa_lists()
             self.enable_qa_controls(False)
+            self.mark_unsaved_changes()  # Mark tree as having unsaved changes
     
     def on_tree_select(self, event=None):
         # If we're ignoring selection events (to prevent infinite loop), return early

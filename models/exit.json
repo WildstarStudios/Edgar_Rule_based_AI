@@ -1,0 +1,25 @@
+{
+  "name": "exit",
+  "description": "",
+  "author": "",
+  "version": "1.0.0",
+  "created_at": "2025-11-22T09:39:14.795830",
+  "sections": [
+    "General",
+    "Technical",
+    "Creative"
+  ],
+  "qa_groups": [
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [],
+      "answers": [],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [],
+      "section": "General"
+    }
+  ],
+  "updated_at": "2025-11-22T09:39:20.994292"
+}
