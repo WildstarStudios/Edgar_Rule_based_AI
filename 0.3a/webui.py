@@ -7,12 +7,47 @@ from datetime import datetime, timedelta
 import re
 import json
 import time
+from pathlib import Path
 from core.layer import create_streaming_layer
 
 app = Flask(__name__, 
             static_folder='webui/static',
             template_folder='webui')
-app.secret_key = 'your-secret-key-here-change-in-production'
+
+def get_secure_secret_key():
+    """
+    Generate and manage secret key with automatic rotation every 7 days
+    """
+    key_file = Path('secret_key.txt')
+    
+    # Check if key file exists and is valid
+    if key_file.exists():
+        try:
+            content = key_file.read_text().strip().split('|')
+            if len(content) == 2:
+                key, created_str = content
+                created_date = datetime.fromisoformat(created_str)
+                
+                # Check if key is older than 7 days
+                if datetime.now() - created_date < timedelta(days=7):
+                    return key
+                else:
+                    print("🔄 Secret key expired (7 days old). Generating new one...")
+        except (ValueError, IndexError) as e:
+            print(f"⚠️  Invalid key file format: {e}. Generating new key...")
+    
+    # Generate new key with current timestamp
+    new_key = secrets.token_hex(64)
+    creation_time = datetime.now().isoformat()
+    
+    key_file.write_text(f"{new_key}|{creation_time}")
+    key_file.chmod(0o600)  # Secure file permissions
+    
+    print(f"🔐 Generated new secret key (valid for 7 days)")
+    return new_key
+
+# Initialize secret key with rotation
+app.secret_key = get_secure_secret_key()
 app.config['PERMANENT_SESSION_LIFETIME'] = timedelta(days=7)
 
 # Color scheme matching your Tkinter app

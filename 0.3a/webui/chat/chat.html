@@ -882,6 +882,9 @@
                 indicator.remove();
                 thinkingIndicator = null;
             }
+            // Always reset processing state when removing thinking indicator
+            isProcessing = false;
+            updateSendButtonState();
         }
 
         function createBotMessageElement() {
@@ -910,14 +913,14 @@
             }
         }
 
-        // Legacy function for quick actions (non-streaming)
+        // Fixed function for quick actions (non-streaming)
         async function processMessageLegacy(message) {
             try {
                 const response = await fetch('/api/chat_legacy', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json',
-                        },
+                    },
                     body: JSON.stringify({ message: message })
                 });
 
@@ -927,17 +930,23 @@
 
                 const data = await response.json();
                 
+                // Always remove thinking indicator and reset processing state
                 removeThinkingIndicator();
+                isProcessing = false;
+                updateSendButtonState();
                 
                 if (data.success && data.response) {
                     addMessage('bot', data.response);
                 } else {
-                    addMessage('bot', "I'm sorry, I couldn't process your message. Please try again.");
+                    addMessage('bot', data.error || "I'm sorry, I couldn't process your message. Please try again.");
                 }
                 
             } catch (error) {
                 console.error('Error:', error);
+                // Ensure thinking indicator is removed and state is reset even on error
                 removeThinkingIndicator();
+                isProcessing = false;
+                updateSendButtonState();
                 addMessage('bot', "I'm having trouble connecting to the AI system. Please try again later.");
             }
         }
@@ -1010,14 +1019,13 @@
             } else if (action === 'showSystemInfo') {
                 showSystemInfo();
             } else {
-                chatInput.value = action;
                 // Use legacy non-streaming for quick actions for faster response
-                sendLegacyMessage();
+                sendLegacyMessage(action);
             }
         }
 
-        function sendLegacyMessage() {
-            const message = chatInput.value.trim();
+        function sendLegacyMessage(action) {
+            const message = action || chatInput.value.trim();
             if (!message || isProcessing || message.length > MAX_CHARS) return;
 
             // Hide welcome message if it's the first message
@@ -1033,10 +1041,6 @@
             chatInput.style.height = 'auto';
             updateCharCount();
             updateSendButtonState();
-            
-            // Reset streaming variables for new message
-            currentBotMessage = null;
-            currentBotMessageContent = null;
             
             // Show thinking indicator
             showThinkingIndicator();
@@ -1072,19 +1076,19 @@
         function showHelp() {
             const helpText = `🤖 Edgar AI Assistant Help
 
-    Available Commands:
-    • "tell me more" - Get detailed explanations
-    • Ask about programming, AI, or any topic
-    • The system automatically routes to appropriate modules
-    • Use natural language - I understand context
+Available Commands:
+• "tell me more" - Get detailed explanations
+• Ask about programming, AI, or any topic
+• The system automatically routes to appropriate modules
+• Use natural language - I understand context
 
-    Features:
-    • Rule-based AI with pattern matching
-    • Module integration for specialized tasks
-    • Conversation trees for follow-up questions
-    • Fuzzy matching for better understanding
+Features:
+• Rule-based AI with pattern matching
+• Module integration for specialized tasks
+• Conversation trees for follow-up questions
+• Fuzzy matching for better understanding
 
-    Tip: Just chat naturally and I'll route your questions to the right place!`;
+Tip: Just chat naturally and I'll route your questions to the right place!`;
 
             if (welcomeMessage.style.display === 'none') {
                 addMessage('bot', helpText);
