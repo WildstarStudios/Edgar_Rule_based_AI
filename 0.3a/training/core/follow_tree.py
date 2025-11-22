@@ -13,7 +13,7 @@ class FollowUpEditor(BaseDialog):
         self.ignore_selection_event = False  # Add this flag
         
         # Make window resizable
-        self.window.minsize(700, 500)
+        self.window.minsize(900, 500)
         
         # Configure ttk styles
         self.configure_ttk_styles()
