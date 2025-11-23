@@ -1,0 +1,39 @@
+{
+  "name": "Edgar",
+  "description": "",
+  "author": "",
+  "version": "1.0.0",
+  "created_at": "2025-11-19T11:49:38.585140",
+  "qa_groups": [
+    {
+      "group_name": "New QA Group",
+      "group_description": "",
+      "questions": [
+        "hello",
+        "hey"
+      ],
+      "answers": [
+        "hi",
+        "howdy"
+      ],
+      "topic": "greeting",
+      "priority": "medium",
+      "follow_ups": [
+        {
+          "branch_name": "test",
+          "question": "tell me mroe",
+          "answer": "ok here is mreo info",
+          "children": [
+            {
+              "branch_name": "test 2",
+              "question": "more info",
+              "answer": "here is more info about test",
+              "children": []
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "updated_at": "2025-11-19T11:53:35.304471"
+}

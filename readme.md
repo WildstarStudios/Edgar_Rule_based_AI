@@ -44,13 +44,12 @@
     * Make login page ✅
 
     # 0.4a - Workflow & Interface Update
-    * Topic Context System
-    * Search format instead of load.
-    * terminal based trainers
-    * chat mini window
-    * subroutines
-    * new ui libary
-
+    * Topic Context System ❌
+    * Search format instead of load ❌
+    * terminal based trainers ❌
+    * chat mini window ❌
+    * subroutines ❌
+    * new ui libary ✅
 
 
 # To-Do

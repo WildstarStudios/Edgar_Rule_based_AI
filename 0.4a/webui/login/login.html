@@ -1,0 +1,714 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Edgar AI - Login</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Arial', sans-serif;
+            background-color: {{ colors.bg_primary }};
+            color: {{ colors.text_primary }};
+            min-height: 100vh;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+            overflow-x: hidden;
+        }
+
+        .login-container {
+            display: flex;
+            max-width: 1000px;
+            width: 100%;
+            background: {{ colors.bg_secondary }};
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
+            position: relative;
+            min-height: 600px;
+        }
+
+        /* Enhanced Gradient Background */
+        .welcome-section {
+            flex: 1;
+            background: 
+                radial-gradient(circle at 20% 80%, {{ colors.accent_primary }}15 0%, transparent 50%),
+                radial-gradient(circle at 80% 20%, {{ colors.accent_secondary }}15 0%, transparent 50%),
+                linear-gradient(135deg, {{ colors.bg_tertiary }} 0%, {{ colors.bg_primary }} 100%);
+            padding: 50px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            text-align: center;
+            position: relative;
+            animation: subtleShift 15s ease-in-out infinite;
+        }
+
+        .welcome-section::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: 
+                radial-gradient(circle at 60% 30%, {{ colors.accent_primary }}10 0%, transparent 50%),
+                radial-gradient(circle at 30% 70%, {{ colors.accent_secondary }}10 0%, transparent 50%);
+            animation: complementaryShift 18s ease-in-out infinite;
+            z-index: 1;
+        }
+
+        @keyframes subtleShift {
+            0%, 100% { 
+                background-position: 0% 0%, 100% 100%, 0% 0%;
+            }
+            50% { 
+                background-position: 100% 100%, 0% 0%, 0% 0%;
+            }
+        }
+
+        @keyframes complementaryShift {
+            0%, 100% { 
+                opacity: 0.3;
+            }
+            50% { 
+                opacity: 0.6;
+            }
+        }
+
+        .welcome-content {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+        }
+
+        .logo-container {
+            margin-bottom: 30px;
+        }
+
+        .logo-image {
+            height: 80px;
+            width: auto;
+            filter: 
+                drop-shadow(0 0 15px {{ colors.accent_primary }}40)
+                drop-shadow(0 0 30px {{ colors.accent_secondary }}20);
+            margin-bottom: 20px;
+            transition: all 0.5s ease;
+        }
+
+        .logo-image:hover {
+            filter: 
+                drop-shadow(0 0 20px {{ colors.accent_primary }}60)
+                drop-shadow(0 0 40px {{ colors.accent_secondary }}30);
+            transform: scale(1.05);
+        }
+
+        .logo-text {
+            font-size: 2.5em;
+            font-weight: 700;
+            margin-bottom: 10px;
+        }
+
+        .logo-edgar {
+            color: {{ colors.accent_primary }};
+            text-shadow: 0 0 10px {{ colors.accent_primary }}60;
+        }
+
+        .logo-ai {
+            color: {{ colors.accent_secondary }};
+            text-shadow: 0 0 10px {{ colors.accent_secondary }}60;
+        }
+
+        .tagline {
+            font-size: 1.4em;
+            color: {{ colors.text_primary }};
+            margin-bottom: 15px;
+            font-weight: 300;
+        }
+
+        .subtagline {
+            font-size: 1em;
+            color: {{ colors.text_secondary }};
+            margin-bottom: 30px;
+            line-height: 1.5;
+            max-width: 400px;
+            margin-left: auto;
+            margin-right: auto;
+        }
+
+        .tech-badges {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 30px;
+        }
+
+        .tech-badge {
+            background: rgba(255, 255, 255, 0.1);
+            color: {{ colors.accent_secondary }};
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 0.8em;
+            border: 1px solid {{ colors.accent_secondary }}30;
+            backdrop-filter: blur(10px);
+            transition: all 0.3s ease;
+        }
+
+        .tech-badge:hover {
+            background: {{ colors.accent_secondary }}20;
+            border-color: {{ colors.accent_secondary }};
+            transform: translateY(-2px);
+        }
+
+        .developer {
+            margin-top: 30px;
+            color: {{ colors.text_secondary }};
+            font-size: 0.9em;
+        }
+
+        .developer strong {
+            color: {{ colors.accent_success }};
+        }
+
+        .form-section {
+            flex: 1;
+            padding: 50px;
+            display: flex;
+            align-items: center;
+            min-height: 600px;
+            transition: all 0.3s ease;
+        }
+
+        .form-container {
+            width: 100%;
+            max-width: 400px;
+            margin: 0 auto;
+            height: 600px;
+            overflow-y: auto;
+            transition: all 0.3s ease;
+            padding-right: 10px;
+            -webkit-overflow-scrolling: touch;
+        }
+
+        .form-header {
+            text-align: center;
+            margin-bottom: 20px;
+        }
+
+        .form-header h2 {
+            font-size: 1.8em;
+            color: {{ colors.accent_secondary }};
+            margin-bottom: 10px;
+        }
+
+        .form-header p {
+            color: {{ colors.text_secondary }};
+        }
+
+        .tabs {
+            display: flex;
+            margin-bottom: 20px;
+            border-bottom: 2px solid {{ colors.border }};
+            position: relative;
+        }
+
+        .tab {
+            flex: 1;
+            text-align: center;
+            padding: 12px;
+            cursor: pointer;
+            color: {{ colors.text_secondary }};
+            transition: all 0.3s ease;
+            position: relative;
+        }
+
+        .tab.active {
+            color: {{ colors.accent_secondary }};
+        }
+
+        .tab::after {
+            content: '';
+            position: absolute;
+            bottom: -2px;
+            left: 50%;
+            width: 0;
+            height: 2px;
+            background: {{ colors.accent_secondary }};
+            transition: all 0.3s ease;
+            transform: translateX(-50%);
+        }
+
+        .tab.active::after {
+            width: 100%;
+        }
+
+        .form {
+            display: none;
+            animation: fadeIn 0.25s ease;
+            padding-bottom: 10px;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(6px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .form.active {
+            display: block;
+        }
+
+        .form-group {
+            margin-bottom: 18px;
+            position: relative;
+        }
+
+        label {
+            display: block;
+            margin-bottom: 8px;
+            color: {{ colors.text_secondary }};
+            font-size: 0.9em;
+            font-weight: 500;
+        }
+
+        input[type="text"],
+        input[type="email"],
+        input[type="password"] {
+            width: 100%;
+            padding: 12px;
+            background-color: {{ colors.input_bg }};
+            border: 2px solid {{ colors.border }};
+            border-radius: 10px;
+            color: {{ colors.text_primary }};
+            font-size: 1em;
+            transition: all 0.25s ease;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: {{ colors.accent_primary }};
+            box-shadow: 0 0 0 3px {{ colors.accent_primary }}20;
+            transform: translateY(-1px);
+        }
+
+        .password-strength {
+            margin-top: 8px;
+            height: 4px;
+            background: {{ colors.border }};
+            border-radius: 2px;
+            overflow: hidden;
+        }
+
+        .strength-bar {
+            height: 100%;
+            width: 0%;
+            transition: all 0.3s ease;
+            border-radius: 2px;
+        }
+
+        .strength-weak { background: {{ colors.accent_error }}; width: 33%; }
+        .strength-medium { background: {{ colors.accent_warning }}; width: 66%; }
+        .strength-strong { background: {{ colors.accent_success }}; width: 100%; }
+
+        .strength-feedback {
+            font-size: 0.8em;
+            color: {{ colors.text_tertiary }};
+            margin-top: 5px;
+        }
+
+        .checkbox-group {
+            display: flex;
+            align-items: center;
+            margin-bottom: 18px;
+        }
+
+        .checkbox-group input {
+            margin-right: 10px;
+            transform: scale(1.2);
+        }
+
+        .btn {
+            width: 100%;
+            padding: 12px;
+            background: linear-gradient(135deg, {{ colors.accent_primary }}, {{ colors.accent_secondary }});
+            color: {{ colors.text_primary }};
+            border: none;
+            border-radius: 10px;
+            font-size: 1em;
+            font-weight: bold;
+            cursor: pointer;
+            transition: all 0.25s ease;
+            position: relative;
+            overflow: hidden;
+        }
+
+        .btn::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: -100%;
+            width: 100%;
+            height: 100%;
+            background: linear-gradient(90deg, transparent, rgba(255,255,255,0.2), transparent);
+            transition: left 0.5s;
+        }
+
+        .btn:hover {
+            transform: translateY(-3px);
+            box-shadow: 0 10px 20px {{ colors.accent_primary }}30;
+        }
+
+        .btn:hover::before {
+            left: 100%;
+        }
+
+        .btn:active {
+            transform: translateY(-1px);
+        }
+
+        .btn.pulse {
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 5px 15px {{ colors.accent_primary }}30; }
+            50% { transform: scale(1.02); box-shadow: 0 8px 25px {{ colors.accent_primary }}50; }
+            100% { transform: scale(1); box-shadow: 0 5px 15px {{ colors.accent_primary }}30; }
+        }
+
+        .btn-loading {
+            position: relative;
+            color: transparent;
+        }
+
+        .btn-loading::after {
+            content: '';
+            position: absolute;
+            width: 20px;
+            height: 20px;
+            top: 50%;
+            left: 50%;
+            margin-left: -10px;
+            margin-top: -10px;
+            border: 2px solid transparent;
+            border-top: 2px solid {{ colors.text_primary }};
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .error-message {
+            background-color: {{ colors.accent_error }};
+            color: white;
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 20px;
+            text-align: center;
+            font-size: 0.9em;
+            animation: shake 0.5s ease;
+        }
+
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            25% { transform: translateX(-5px); }
+            75% { transform: translateX(5px); }
+        }
+
+        .demo-info {
+            text-align: center;
+            margin-top: 18px;
+            padding: 14px;
+            background: {{ colors.bg_tertiary }};
+            border-radius: 10px;
+            font-size: 0.9em;
+            color: {{ colors.text_secondary }};
+            border: 1px solid {{ colors.border }};
+        }
+
+        .demo-info strong {
+            color: {{ colors.accent_success }};
+        }
+
+        @media (max-width: 768px) {
+            .login-container {
+                flex-direction: column;
+                min-height: auto;
+            }
+            
+            .welcome-section {
+                padding: 30px;
+                min-height: 300px;
+            }
+            
+            .form-section {
+                padding: 30px;
+                min-height: auto;
+            }
+
+            .form-container {
+                height: auto;
+                overflow: visible;
+                padding-right: 0;
+            }
+
+            .logo-text {
+                font-size: 2em;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="login-container">
+        <!-- Welcome Section -->
+        <div class="welcome-section">
+            <div class="welcome-content">
+                <div class="logo-container">
+                    <img src="/static/images/Edgar.svg" alt="Edgar AI" class="logo-image" onerror="this.style.display='none'">
+                    <div class="logo-text">
+                        <span class="logo-edgar">Edgar</span><span class="logo-ai">AI</span>
+                    </div>
+                </div>
+                
+                <h1 class="tagline">Rule-Based AI Assistant</h1>
+                <p class="subtagline">
+                    The reliable alternative to ChatGPT. Predictable answers, consistent performance, 
+                    no hallucinations. Built for accuracy over creativity.
+                </p>
+                
+                <div class="tech-badges">
+                    <span class="tech-badge">Pattern Matching</span>
+                    <span class="tech-badge">Word Variants</span>
+                    <span class="tech-badge">Conversation Trees</span>
+                </div>
+                
+                <div class="developer">
+                    Developed by <strong>Wildstar Studios</strong>
+                </div>
+            </div>
+        </div>
+
+        <!-- Form Section -->
+        <div class="form-section">
+            <div class="form-container" id="formContainer">
+                <div class="form-header">
+                    <h2>Access Your Assistant</h2>
+                    <p>Sign in to your Rule-Based AI</p>
+                </div>
+
+                {% if error %}
+                <div class="error-message">
+                    {{ error }}
+                </div>
+                {% endif %}
+
+                <div class="tabs">
+                    <div class="tab active" onclick="showForm('login')">Login</div>
+                    <div class="tab" onclick="showForm('register')">Register</div>
+                </div>
+
+                <!-- Login Form -->
+                <form id="loginForm" class="form active" method="POST" action="/login" onsubmit="handleLoginSubmit(event)">
+                    <div class="form-group">
+                        <label for="username">Username</label>
+                        <input type="text" id="username" name="username" required>
+                    </div>
+                    <div class="form-group">
+                        <label for="password">Password</label>
+                        <input type="password" id="password" name="password" required>
+                    </div>
+                    <div class="checkbox-group">
+                        <input type="checkbox" id="remember_me" name="remember_me">
+                        <label for="remember_me">Remember me</label>
+                    </div>
+                    <button type="submit" class="btn" id="loginBtn">Sign In</button>
+                </form>
+
+                <!-- Register Form -->
+                <form id="registerForm" class="form" method="POST" action="/register" onsubmit="handleRegisterSubmit(event)">
+                    <div class="form-group">
+                        <label for="reg_username">Username</label>
+                        <input type="text" id="reg_username" name="username" required onblur="checkUsername()">
+                        <small style="color: {{ colors.text_tertiary }}; display: block; margin-top: 5px;">
+                            3-20 characters (letters, numbers, _)
+                        </small>
+                    </div>
+                    <div class="form-group">
+                        <label for="reg_password">Password</label>
+                        <input type="password" id="reg_password" name="password" required oninput="checkPasswordStrength()">
+                        <div class="password-strength">
+                            <div class="strength-bar" id="strengthBar"></div>
+                        </div>
+                        <div class="strength-feedback" id="strengthFeedback"></div>
+                    </div>
+                    <div class="form-group">
+                        <label for="confirm_password">Confirm Password</label>
+                        <input type="password" id="confirm_password" name="confirm_password" required oninput="checkPasswordMatch()">
+                        <div class="strength-feedback" id="passwordMatchFeedback"></div>
+                    </div>
+                    <button type="submit" class="btn" id="registerBtn">Create Account</button>
+                </form>
+
+                <div class="demo-info">
+                    <strong>Demo Account:</strong><br>
+                    Username: <strong>demo</strong><br>
+                    Password: <strong>demo123</strong>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let currentForm = 'login';
+        
+        function showForm(formType) {
+            if (formType === currentForm) return;
+            
+            const formContainer = document.getElementById('formContainer');
+            const targetForm = document.getElementById(formType + 'Form');
+            
+            // Update tabs
+            document.querySelectorAll('.tab').forEach(tab => {
+                tab.classList.remove('active');
+            });
+            document.querySelectorAll('.form').forEach(form => {
+                form.classList.remove('active');
+            });
+
+            if (formType === 'login') {
+                document.querySelectorAll('.tab')[0].classList.add('active');
+                document.getElementById('loginForm').classList.add('active');
+                document.querySelector('.form-header h2').textContent = 'Access Your Assistant';
+                document.querySelector('.form-header p').textContent = 'Sign in to your Rule-Based AI';
+            } else {
+                document.querySelectorAll('.tab')[1].classList.add('active');
+                document.getElementById('registerForm').classList.add('active');
+                document.querySelector('.form-header h2').textContent = 'Create Account';
+                document.querySelector('.form-header p').textContent = 'Join the Rule-Based AI revolution';
+            }
+            
+            currentForm = formType;
+            
+            // Reset internal scroll so new form starts at top
+            formContainer.scrollTop = 0;
+        }
+
+        function checkUsername() {
+            const username = document.getElementById('reg_username').value;
+            if (username.length >= 3) {
+                fetch(`/api/check_username?username=${username}`)
+                    .then(response => response.json())
+                    .then(data => {
+                        const input = document.getElementById('reg_username');
+                        if (data.available) {
+                            input.style.borderColor = '{{ colors.accent_success }}';
+                        } else {
+                            input.style.borderColor = '{{ colors.accent_error }}';
+                        }
+                    });
+            }
+        }
+
+        function checkPasswordStrength() {
+            const password = document.getElementById('reg_password').value;
+            const strengthBar = document.getElementById('strengthBar');
+            const strengthFeedback = document.getElementById('strengthFeedback');
+
+            if (!password) {
+                strengthBar.className = 'strength-bar';
+                strengthBar.style.width = '0%';
+                strengthFeedback.textContent = '';
+                return;
+            }
+
+            fetch(`/api/check_password_strength?password=${encodeURIComponent(password)}`)
+                .then(response => response.json())
+                .then(data => {
+                    strengthBar.className = 'strength-bar';
+                    
+                    if (data.score <= 2) {
+                        strengthBar.classList.add('strength-weak');
+                        strengthFeedback.style.color = '{{ colors.accent_error }}';
+                    } else if (data.score <= 4) {
+                        strengthBar.classList.add('strength-medium');
+                        strengthFeedback.style.color = '{{ colors.accent_warning }}';
+                    } else {
+                        strengthBar.classList.add('strength-strong');
+                        strengthFeedback.style.color = '{{ colors.accent_success }}';
+                    }
+                    
+                    strengthFeedback.textContent = data.feedback.join(' • ');
+                });
+        }
+
+        function checkPasswordMatch() {
+            const password = document.getElementById('reg_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const feedback = document.getElementById('passwordMatchFeedback');
+            
+            if (!confirmPassword) {
+                feedback.textContent = '';
+                return;
+            }
+            
+            if (password === confirmPassword) {
+                feedback.textContent = '✓ Passwords match';
+                feedback.style.color = '{{ colors.accent_success }}';
+                document.getElementById('confirm_password').style.borderColor = '{{ colors.accent_success }}';
+            } else {
+                feedback.textContent = '✗ Passwords do not match';
+                feedback.style.color = '{{ colors.accent_error }}';
+                document.getElementById('confirm_password').style.borderColor = '{{ colors.accent_error }}';
+            }
+        }
+
+        function handleLoginSubmit(event) {
+            const btn = document.getElementById('loginBtn');
+            btn.classList.add('btn-loading');
+            btn.disabled = true;
+            // Form will submit normally
+        }
+
+        function handleRegisterSubmit(event) {
+            const password = document.getElementById('reg_password').value;
+            const confirmPassword = document.getElementById('confirm_password').value;
+            const btn = document.getElementById('registerBtn');
+            
+            if (password !== confirmPassword) {
+                event.preventDefault();
+                document.getElementById('confirm_password').focus();
+                return false;
+            }
+            
+            btn.classList.add('btn-loading');
+            btn.disabled = true;
+            return true;
+        }
+
+        // Add pulse animation to buttons on hover
+        document.addEventListener('DOMContentLoaded', function() {
+            const buttons = document.querySelectorAll('.btn');
+            buttons.forEach(btn => {
+                btn.addEventListener('mouseenter', function() {
+                    this.classList.add('pulse');
+                });
+                
+                btn.addEventListener('mouseleave', function() {
+                    this.classList.remove('pulse');
+                });
+            });
+        });
+    </script>
+</body>
+</html>
