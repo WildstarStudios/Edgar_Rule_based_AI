@@ -1,5 +1,5 @@
 import customtkinter as ctk
-from customtkinter import CTk, CTkFrame, CTkLabel, CTkButton, CTkEntry, CTkTextbox, CTkScrollbar, CTkComboBox, StringVar
+from customtkinter import CTk, CTkFrame, CTkLabel, CTkButton, CTkEntry, CTkTextbox, CTkScrollbar, CTkComboBox, StringVar, CTkToplevel
 import threading
 import time
 import sys
@@ -20,17 +20,14 @@ except ImportError as e:
     print("Please make sure core/layer.py exists")
     sys.exit(1)
 
-# Import local settings
-from .settings import open_settings
-
 # Set appearance mode and theme to match classic colors
 ctk.set_appearance_mode("Dark")
 ctk.set_default_color_theme("dark-blue")
 
-class ClassicChatbotGUI:
+class ModernChatbotGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Edgar AI Assistant - Classic")
+        self.root.title("Edgar AI Assistant - Modern")
         
         # Load configuration
         self.config = self.load_configuration()
@@ -42,7 +39,7 @@ class ClassicChatbotGUI:
         # Center the window on screen
         self.center_window(window_width, window_height)
         
-        # Classic color scheme
+        # Modern color scheme
         self.colors = {
             'bg_primary': '#0f0f23',
             'bg_secondary': '#1a1a2e',
@@ -66,7 +63,7 @@ class ClassicChatbotGUI:
             'scrollbar_hover': '#5750d3'
         }
         
-        # Configure customtkinter to use classic colors
+        # Configure customtkinter to use modern colors
         self.configure_ctk_theme()
         
         # Initialize streaming layer with configuration
@@ -109,7 +106,7 @@ class ClassicChatbotGUI:
         self.root.geometry(f"{width}x{height}+{x}+{y}")
     
     def configure_ctk_theme(self):
-        """Configure CustomTkinter to use classic theme colors"""
+        """Configure CustomTkinter to use modern theme colors"""
         # Set main background
         self.root.configure(fg_color=self.colors['bg_primary'])
         
@@ -135,7 +132,7 @@ class ClassicChatbotGUI:
     def _handle_error(self, error: str):
         """Handle errors from the layer"""
         self.add_message("error", error)
-        CTkMessagebox.show_error("Error", error)
+        self.show_error_dialog("Error", error)
     
     def load_configuration(self):
         """Load configuration from config file"""
@@ -144,7 +141,7 @@ class ClassicChatbotGUI:
         # Default configuration
         defaults = {
             'gui': {
-                'theme': 'classic',
+                'theme': 'modern',
                 'window_width': '1000',
                 'window_height': '700',
                 'streaming_enabled': 'True',
@@ -204,7 +201,7 @@ class ClassicChatbotGUI:
                 text_color=self.colors['text_primary']).pack()
         CTkLabel(logo_frame, text="Edgar AI", font=('Arial', 18, 'bold'),
                 text_color=self.colors['text_primary']).pack(pady=(5, 0))
-        CTkLabel(logo_frame, text="Classic Theme", 
+        CTkLabel(logo_frame, text="Modern Theme", 
                 font=('Arial', 11), text_color=self.colors['text_secondary']).pack()
         
         # MODEL SELECTION DROPDOWN
@@ -217,7 +214,7 @@ class ClassicChatbotGUI:
         # Get available models
         self.available_models = self.get_available_models()
         
-        # Create dropdown with classic styling
+        # Create dropdown with modern styling
         self.model_var = StringVar()
         self.model_dropdown = CTkComboBox(
             model_frame,
@@ -314,7 +311,7 @@ class ClassicChatbotGUI:
             error_msg = f"Error loading model {model_name}: {str(e)}"
             self.status_var.set("Model load failed")
             self.add_message("error", error_msg)
-            CTkMessagebox.show_error("Model Error", error_msg)
+            self.show_error_dialog("Model Error", error_msg)
 
     def refresh_models(self):
         """Refresh the list of available models using streaming layer"""
@@ -357,7 +354,7 @@ class ClassicChatbotGUI:
         chat_frame.columnconfigure(0, weight=1)
         chat_frame.rowconfigure(0, weight=1)
         
-        # Create text widget with custom styling to match classic theme
+        # Create text widget with custom styling to match modern theme
         self.chat_display = CTkTextbox(
             chat_frame,
             wrap="word",
@@ -528,7 +525,7 @@ class ClassicChatbotGUI:
         current_model = self.streaming_layer.get_current_model()
         group_count = self.streaming_layer.get_qa_groups_count()
         
-        welcome_text = f"""🌟 Welcome to Edgar AI Assistant - Classic Theme
+        welcome_text = f"""🌟 Welcome to Edgar AI Assistant - Modern Theme
 
 Current Model: {current_model}
 Knowledge Base: {group_count} QA groups
@@ -775,8 +772,7 @@ How can I assist you today?"""
     
     def reset_chat(self):
         """Reset the conversation"""
-        # Use CTkMessagebox for consistency
-        if CTkMessagebox.ask_yesno("New Chat", "Start a new conversation? Current context will be cleared."):
+        if self.ask_yesno("New Chat", "Start a new conversation? Current context will be cleared."):
             # Save current model
             current_model = self.streaming_layer.get_current_model()
             
@@ -798,15 +794,19 @@ How can I assist you today?"""
                 self.status_var.set("New chat started")
     
     def show_settings(self):
-        """Show settings dialog using the new settings window"""
+        """Show modern settings dialog"""
         try:
-            open_settings(self.root)
+            # Import and open modern settings
+            from .modern_config import open_modern_settings
+            open_modern_settings(self.root, self)
+        except ImportError as e:
+            self.show_error_dialog("Error", f"Cannot open modern settings: {e}")
         except Exception as e:
-            CTkMessagebox.show_error("Error", f"Cannot open settings: {e}")
+            self.show_error_dialog("Error", f"Cannot open settings: {e}")
     
     def show_help(self):
         """Show help information"""
-        help_text = """🤖 Edgar AI Assistant - Classic Theme - Help
+        help_text = """🤖 Edgar AI Assistant - Modern Theme - Help
 
 Quick Commands:
 • 'tell me more' - Get detailed information
@@ -827,38 +827,142 @@ Tips:
 • Press Enter to send messages quickly
 • Switch models using the dropdown in the sidebar"""
 
-        CTkMessagebox.show_info("Assistant Help", help_text)
-
-# Custom messagebox implementation for CTk
-class CTkMessagebox:
-    @staticmethod
-    def show_error(title, message):
-        # For now, use tkinter messagebox as fallback
-        # In a production app, you'd create a custom CTk dialog
-        import tkinter.messagebox as mb
-        mb.showerror(title, message)
+        self.show_info_dialog("Assistant Help", help_text)
     
-    @staticmethod
-    def show_info(title, message):
-        import tkinter.messagebox as mb
-        mb.showinfo(title, message)
+    def show_error_dialog(self, title, message):
+        """Show a custom CTk error dialog"""
+        dialog = CTkToplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("400x200")
+        dialog.configure(fg_color=self.colors['bg_secondary'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Error icon and message
+        CTkLabel(dialog, text="❌", font=('Arial', 24),
+                text_color=self.colors['accent_error']).pack(pady=(20, 10))
+        
+        CTkLabel(dialog, text=title, font=('Arial', 16, 'bold'),
+                text_color=self.colors['text_primary']).pack()
+        
+        CTkLabel(dialog, text=message, font=('Arial', 11),
+                text_color=self.colors['text_primary'],
+                wraplength=350, justify='left').pack(expand=True, padx=20, pady=10)
+        
+        # OK button
+        CTkButton(dialog, text="OK", command=dialog.destroy,
+                 fg_color=self.colors['accent_primary'],
+                 hover_color=self.colors['hover_primary'],
+                 text_color=self.colors['text_primary']).pack(pady=(0, 20))
     
-    @staticmethod
-    def ask_yesno(title, message):
-        import tkinter.messagebox as mb
-        return mb.askyesno(title, message)
+    def show_info_dialog(self, title, message):
+        """Show a custom CTk info dialog"""
+        dialog = CTkToplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("450x300")
+        dialog.configure(fg_color=self.colors['bg_secondary'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Info icon and title
+        CTkLabel(dialog, text="ℹ️", font=('Arial', 24),
+                text_color=self.colors['accent_secondary']).pack(pady=(20, 10))
+        
+        CTkLabel(dialog, text=title, font=('Arial', 16, 'bold'),
+                text_color=self.colors['text_primary']).pack()
+        
+        # Message in scrollable frame
+        text_widget = CTkTextbox(dialog, font=('Arial', 11),
+                               fg_color=self.colors['bg_secondary'],
+                               text_color=self.colors['text_primary'],
+                               border_width=0, wrap="word", height=150)
+        text_widget.pack(expand=True, fill="both", padx=20, pady=10)
+        text_widget.insert("1.0", message)
+        text_widget.configure(state="disabled")
+        
+        # OK button
+        CTkButton(dialog, text="OK", command=dialog.destroy,
+                 fg_color=self.colors['accent_primary'],
+                 hover_color=self.colors['hover_primary'],
+                 text_color=self.colors['text_primary']).pack(pady=(0, 20))
+    
+    def ask_yesno(self, title, message):
+        """Show a custom CTk yes/no dialog and return result"""
+        result = [False]  # Use list to store result for closure
+        
+        dialog = CTkToplevel(self.root)
+        dialog.title(title)
+        dialog.geometry("400x200")
+        dialog.configure(fg_color=self.colors['bg_secondary'])
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        # Center dialog
+        dialog.update_idletasks()
+        x = self.root.winfo_x() + (self.root.winfo_width() // 2) - (dialog.winfo_width() // 2)
+        y = self.root.winfo_y() + (self.root.winfo_height() // 2) - (dialog.winfo_height() // 2)
+        dialog.geometry(f"+{x}+{y}")
+        
+        # Question icon and message
+        CTkLabel(dialog, text="❓", font=('Arial', 24),
+                text_color=self.colors['accent_warning']).pack(pady=(20, 10))
+        
+        CTkLabel(dialog, text=message, font=('Arial', 11),
+                text_color=self.colors['text_primary'],
+                wraplength=350, justify='center').pack(expand=True, padx=20, pady=10)
+        
+        # Buttons frame
+        buttons_frame = CTkFrame(dialog, fg_color="transparent")
+        buttons_frame.pack(pady=(0, 20))
+        
+        def on_yes():
+            result[0] = True
+            dialog.destroy()
+        
+        def on_no():
+            result[0] = False
+            dialog.destroy()
+        
+        CTkButton(buttons_frame, text="Yes", command=on_yes,
+                 fg_color=self.colors['accent_success'],
+                 hover_color=self.colors['hover_primary'],
+                 text_color=self.colors['text_primary'],
+                 width=80).pack(side="left", padx=(0, 10))
+        
+        CTkButton(buttons_frame, text="No", command=on_no,
+                 fg_color=self.colors['accent_error'],
+                 hover_color=self.colors['hover_primary'],
+                 text_color=self.colors['text_primary'],
+                 width=80).pack(side="left")
+        
+        # Wait for dialog to close
+        self.root.wait_window(dialog)
+        return result[0]
 
 def main():
     try:
-        # Create root window
+        # Create root window using CTk (not tkinter)
         root = CTk()
         
-        app = ClassicChatbotGUI(root)
+        app = ModernChatbotGUI(root)
         
         root.mainloop()
     except Exception as e:
         print(f"Error starting application: {e}")
-        CTkMessagebox.show_error("Error", f"Failed to start application: {e}")
+        # Use a simple console message instead of GUI error for startup failures
+        print(f"Failed to start application: {e}")
 
 if __name__ == "__main__":
     main()

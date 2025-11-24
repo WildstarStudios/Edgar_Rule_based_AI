@@ -20,9 +20,6 @@ except ImportError as e:
     print("Please make sure core/layer.py exists")
     sys.exit(1)
 
-# Import local settings
-from .settings import open_settings
-
 class ClassicChatbotGUI:
     def __init__(self, root):
         self.root = root
@@ -894,9 +891,13 @@ How can I assist you today?"""
                 self.status_var.set("New chat started")
     
     def show_settings(self):
-        """Show settings dialog using the new settings window"""
+        """Show classic settings dialog"""
         try:
-            open_settings(self.root)
+            # Import and open classic settings
+            from .classic_config import open_classic_settings
+            open_classic_settings(self.root, self)
+        except ImportError as e:
+            messagebox.showerror("Error", f"Cannot open classic settings: {e}")
         except Exception as e:
             messagebox.showerror("Error", f"Cannot open settings: {e}")
     

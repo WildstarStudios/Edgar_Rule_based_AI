@@ -1,13 +1,14 @@
-# ui/classic/settings.py
+# ui/classic/classic_config.py
 import tkinter as tk
 from tkinter import ttk, messagebox
 import configparser
 import os
 import sys
 
-class SettingsWindow:
-    def __init__(self, parent):
+class ClassicSettingsWindow:
+    def __init__(self, parent, app):
         self.parent = parent
+        self.app = app  # Reference to the main app for live updates
         self.config = configparser.ConfigParser()
         self.load_config()
         
@@ -46,9 +47,7 @@ class SettingsWindow:
             self.config['gui'] = {
                 'theme': 'classic',
                 'window_width': '1000',
-                'window_height': '700',
-                'streaming_enabled': 'True',
-                'verbose_mode': 'False'
+                'window_height': '700'
             }
     
     def save_config(self):
@@ -59,8 +58,8 @@ class SettingsWindow:
     def setup_window(self):
         """Setup the settings window"""
         self.window = tk.Toplevel(self.parent)
-        self.window.title("Settings - Edgar AI Assistant")
-        self.window.geometry("500x400")
+        self.window.title("Settings - Edgar AI Assistant (Classic)")
+        self.window.geometry("600x450")
         self.window.resizable(True, True)
         self.window.configure(bg=self.colors['bg_primary'])
         
@@ -104,7 +103,7 @@ class SettingsWindow:
         # Title
         title_label = tk.Label(
             scrollable_frame, 
-            text="Settings", 
+            text="Classic Settings", 
             font=('Arial', 18, 'bold'),
             bg=self.colors['bg_primary'],
             fg=self.colors['text_primary']
@@ -139,7 +138,7 @@ class SettingsWindow:
             font=('Arial', 9),
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary'],
-            wraplength=400,
+            wraplength=500,
             justify='left'
         )
         theme_desc.pack(anchor='w', padx=15, pady=(0, 15))
@@ -200,13 +199,61 @@ class SettingsWindow:
         
         modern_desc = tk.Label(
             modern_frame,
-            text="Dark gray theme with blue accents",
+            text="Modern dark theme with blue accents",
             font=('Arial', 9),
             bg=self.colors['bg_secondary'],
             fg=self.colors['text_primary'],
             justify='left'
         )
         modern_desc.pack(side=tk.LEFT, padx=(10, 0))
+        
+        # GUI Settings Section
+        gui_frame = tk.Frame(
+            scrollable_frame, 
+            bg=self.colors['bg_secondary'],
+            relief='flat',
+            bd=1,
+            highlightbackground=self.colors['border'],
+            highlightthickness=1
+        )
+        gui_frame.pack(fill=tk.X, pady=(0, 20))
+        
+        # GUI header
+        gui_header = tk.Label(
+            gui_frame,
+            text="WINDOW SETTINGS",
+            font=('Arial', 12, 'bold'),
+            bg=self.colors['bg_secondary'],
+            fg=self.colors['text_primary']
+        )
+        gui_header.pack(anchor='w', padx=15, pady=(15, 10))
+        
+        # Window size settings
+        size_frame = tk.Frame(gui_frame, bg=self.colors['bg_secondary'])
+        size_frame.pack(fill=tk.X, padx=15, pady=(0, 15))
+        
+        tk.Label(size_frame, text="Window Size:", font=('Arial', 10),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_primary']).pack(side=tk.LEFT)
+        
+        # Width
+        tk.Label(size_frame, text="Width:", font=('Arial', 9),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(side=tk.LEFT, padx=(20, 5))
+        
+        self.width_var = tk.StringVar(value=self.config.get('gui', 'window_width', fallback='1000'))
+        width_entry = tk.Entry(size_frame, textvariable=self.width_var, width=6,
+                              bg=self.colors['input_bg'], fg=self.colors['text_primary'],
+                              insertbackground=self.colors['text_primary'])
+        width_entry.pack(side=tk.LEFT)
+        
+        # Height
+        tk.Label(size_frame, text="Height:", font=('Arial', 9),
+                bg=self.colors['bg_secondary'], fg=self.colors['text_secondary']).pack(side=tk.LEFT, padx=(20, 5))
+        
+        self.height_var = tk.StringVar(value=self.config.get('gui', 'window_height', fallback='700'))
+        height_entry = tk.Entry(size_frame, textvariable=self.height_var, width=6,
+                               bg=self.colors['input_bg'], fg=self.colors['text_primary'],
+                               insertbackground=self.colors['text_primary'])
+        height_entry.pack(side=tk.LEFT)
         
         # Current Settings Section
         current_frame = tk.Frame(
@@ -233,10 +280,9 @@ class SettingsWindow:
         settings_text = f"""Current Configuration:
 • Theme: {current_theme.title()}
 • Window Size: {self.config.get('gui', 'window_width', fallback='1000')}x{self.config.get('gui', 'window_height', fallback='700')}
-• Streaming: {self.config.get('gui', 'streaming_enabled', fallback='True')}
-• Verbose Mode: {self.config.get('gui', 'verbose_mode', fallback='False')}
 
-All settings are stored in config.cfg"""
+Settings requiring restart: Theme
+Live updates: Window size"""
         
         current_settings = tk.Label(
             current_frame,
@@ -252,22 +298,39 @@ All settings are stored in config.cfg"""
         buttons_frame = tk.Frame(scrollable_frame, bg=self.colors['bg_primary'])
         buttons_frame.pack(fill=tk.X, pady=(10, 0))
         
-        # Apply and Restart button
-        apply_btn = tk.Button(
+        # Apply button (for live updates)
+        apply_live_btn = tk.Button(
             buttons_frame,
-            text="Apply and Restart",
-            command=self.apply_and_restart,
+            text="Apply Window Size",
+            command=self.apply_live_settings,
             bg=self.colors['accent_primary'],
             fg=self.colors['text_primary'],
             font=('Arial', 10, 'bold'),
             relief='flat',
             bd=0,
-            padx=30,
-            pady=10,
+            padx=20,
+            pady=8,
             activebackground=self.colors['accent_primary'],
             activeforeground=self.colors['text_primary']
         )
-        apply_btn.pack(side=tk.RIGHT, padx=(10, 0))
+        apply_live_btn.pack(side=tk.LEFT, padx=(0, 10))
+        
+        # Apply and Restart button
+        apply_restart_btn = tk.Button(
+            buttons_frame,
+            text="Apply and Restart",
+            command=self.apply_and_restart,
+            bg=self.colors['accent_success'],
+            fg=self.colors['text_primary'],
+            font=('Arial', 10, 'bold'),
+            relief='flat',
+            bd=0,
+            padx=20,
+            pady=8,
+            activebackground=self.colors['accent_success'],
+            activeforeground=self.colors['text_primary']
+        )
+        apply_restart_btn.pack(side=tk.LEFT, padx=(0, 10))
         
         # Cancel button
         cancel_btn = tk.Button(
@@ -280,21 +343,57 @@ All settings are stored in config.cfg"""
             relief='flat',
             bd=0,
             padx=20,
-            pady=10,
+            pady=8,
             activebackground=self.colors['bg_secondary'],
             activeforeground=self.colors['text_primary']
         )
-        cancel_btn.pack(side=tk.RIGHT)
+        cancel_btn.pack(side=tk.LEFT)
+    
+    def apply_live_settings(self):
+        """Apply settings that can be updated without restart"""
+        try:
+            # Update window size
+            new_width = int(self.width_var.get())
+            new_height = int(self.height_var.get())
+            
+            # Validate reasonable window size
+            if new_width < 800 or new_height < 600:
+                messagebox.showwarning("Invalid Size", "Window size should be at least 800x600")
+                return
+            
+            # Update app window size
+            self.parent.geometry(f"{new_width}x{new_height}")
+            
+            # Save to config
+            if not self.config.has_section('gui'):
+                self.config.add_section('gui')
+            
+            self.config.set('gui', 'window_width', str(new_width))
+            self.config.set('gui', 'window_height', str(new_height))
+            
+            self.save_config()
+            
+            messagebox.showinfo(
+                "Settings Applied", 
+                f"Window size updated to: {new_width}x{new_height}"
+            )
+            
+        except ValueError:
+            messagebox.showerror("Invalid Input", "Please enter valid numbers for window size")
+        except Exception as e:
+            messagebox.showerror("Error", f"Failed to apply settings: {str(e)}")
     
     def apply_and_restart(self):
-        """Apply settings and restart the application"""
+        """Apply all settings and restart the application"""
         selected_theme = self.theme_var.get()
         
-        # Update config with selected theme
+        # Update config with all settings
         if not self.config.has_section('gui'):
             self.config.add_section('gui')
         
         self.config.set('gui', 'theme', selected_theme)
+        self.config.set('gui', 'window_width', self.width_var.get())
+        self.config.set('gui', 'window_height', self.height_var.get())
         
         # Save config
         self.save_config()
@@ -302,7 +401,7 @@ All settings are stored in config.cfg"""
         # Show confirmation message
         messagebox.showinfo(
             "Settings Applied", 
-            f"Theme has been set to '{selected_theme.title()}'. The application will now restart to apply changes."
+            f"All settings have been saved. The application will now restart to apply the theme change to '{selected_theme.title()}'."
         )
         
         # Close settings window
@@ -316,13 +415,13 @@ All settings are stored in config.cfg"""
         python = sys.executable
         os.execl(python, python, *sys.argv)
 
-def open_settings(parent):
-    """Open the settings window"""
-    SettingsWindow(parent)
+def open_classic_settings(parent, app):
+    """Open the classic settings window"""
+    ClassicSettingsWindow(parent, app)
 
 # For testing purposes
 if __name__ == "__main__":
     root = tk.Tk()
     root.withdraw()  # Hide main window
-    open_settings(root)
+    open_classic_settings(root, None)
     root.mainloop()
