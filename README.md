@@ -1,3 +1,5 @@
+# this project is now archived it is going to be replaced by a rewrite sometime in 2026.
+
 # ⚠️ Notice About Forks
 * Forks of this project may contain altered rule sets, corrupted JSON models, modified modules, or Python scripts that run arbitrary code.
 * They are not reviewed or verified. Only use the official version and load or execute models and scripts from trusted sources.
